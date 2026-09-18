@@ -30,6 +30,7 @@ def generate_pulse_models() -> Path:
         "from enum import Enum",
         "from typing import Final",
         "",
+        "",
         "class PulseType(str, Enum):",
     ]
 
