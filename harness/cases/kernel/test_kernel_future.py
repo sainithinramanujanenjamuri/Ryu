@@ -1,30 +1,21 @@
-"""Future harness cases: Space Kernel admission control, budget enforcement, plan versioning.
+"""Future harness cases: Space Kernel capabilities scheduled for Phase 3+.
 
-All cases skip — Phase 2.
-
-spec §4 (Admission Control), CONTRACT_MATRIX KERNEL-001 through KERNEL-007,
-PLAN-001 through PLAN-006 — Phase 2
+spec §4 (Space Kernel), CONTRACT_MATRIX KERNEL-004 through KERNEL-007,
+PLAN-005 through PLAN-006 — Phase 3+
 """
+
+from __future__ import annotations
 
 import pytest
 
 
-def test_kernel_pre_dispatch_admission() -> None:
-    pytest.skip("spec §4, KERNEL-001 — Phase 2: Admission Control not implemented.")
+def test_kernel_concurrency_lease_enforcement() -> None:
+    pytest.skip("spec §4, KERNEL-004 — Phase 3: Lease enforcement not implemented.")
 
 
-def test_kernel_hard_stop_at_zero_budget() -> None:
-    pytest.skip("spec §4, KERNEL-002 — Phase 2: Budget enforcement not implemented.")
+def test_kernel_agent_execution_supervision() -> None:
+    pytest.skip("spec §4, KERNEL-005 — Phase 5: Agent execution supervision not implemented.")
 
 
-def test_kernel_single_escalation_per_window() -> None:
-    pytest.skip("spec §4, KERNEL-003 — Phase 2: window_id enforcement not implemented.")
-
-
-def test_plan_cas_versioning() -> None:
-    pytest.skip("spec §16, PLAN-001 — Phase 2: Plan CAS not implemented.")
-
-
-def test_plan_superseded_notification() -> None:
-    pytest.skip("spec §16, PLAN-003 — Phase 2: plan.version.superseded not implemented.")
-
+def test_kernel_checkpoint_restore() -> None:
+    pytest.skip("spec §4, KERNEL-006 — Phase 4: Checkpoint restoration not implemented.")

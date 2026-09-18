@@ -48,12 +48,17 @@ class PulseValidator:
     Loaded once; the registry and schemas are immutable after init.
     """
 
-    def __init__(self, registry_root: Path | None = None) -> None:
+    def __init__(
+        self,
+        registry_root: Path | None = None,
+        secret_store: Any | None = None,
+    ) -> None:
         root = registry_root or _find_contracts_root()
         self._registry_file = root / "pulse-types.json"
         self._schemas_dir = root / "payload-schemas"
         self._known_types: set[str] = self._load_registry()
         self._schemas: dict[str, dict[str, Any]] = self._load_schemas()
+        self.secret_store = secret_store
 
     # ------------------------------------------------------------------
     # Internal loading
@@ -153,11 +158,50 @@ class PulseValidator:
                 details=str(exc.message),
             ) from exc
 
+    def validate_secrets(self, pulse_type: str, payload: Any) -> None:
+        """
+        Scan payload recursively for exact substring matches of registered secrets.
+        Raises PulseRejectedError(reason='secret_leak_detected') if a secret is found (ADR-0004).
+        """
+        if self.secret_store is None:
+            return
+
+        active_secrets: frozenset[str]
+        if hasattr(self.secret_store, "get_active_secret_values"):
+            active_secrets = self.secret_store.get_active_secret_values()
+        elif isinstance(self.secret_store, (set, frozenset)):
+            active_secrets = frozenset(self.secret_store)
+        else:
+            return
+
+        if not active_secrets:
+            return
+
+        def _traverse(val: Any) -> None:
+            if isinstance(val, str):
+                for secret_val in active_secrets:
+                    if secret_val in val:
+                        raise PulseRejectedError(
+                            reason="secret_leak_detected",
+                            offending_type=pulse_type,
+                            details="Pulse payload contains a resolved secret value.",
+                        )
+            elif isinstance(val, dict):
+                for k, v in val.items():
+                    _traverse(k)
+                    _traverse(v)
+            elif isinstance(val, (list, tuple, set)):
+                for item in val:
+                    _traverse(item)
+
+        _traverse(payload)
+
     def validate(self, pulse_type: str, payload: dict[str, Any]) -> None:
         """
-        Validate type then payload in the required order.
+        Validate type, schema payload, and secret containment in the required order.
         Stops at first failure (rejection before append).
         """
         self.validate_type(pulse_type)
         self.validate_payload(pulse_type, payload)
+        self.validate_secrets(pulse_type, payload)
 

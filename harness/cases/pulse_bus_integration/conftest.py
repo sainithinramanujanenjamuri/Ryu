@@ -15,8 +15,14 @@ from ryu.pulse_bus.durable_bus import DurablePulseBus
 from ryu.pulse_bus.store import PostgresPulseStore
 from ryu.pulse_bus.transport import RedisStreamTransport
 
-if not os.environ.get("RYU_INTEGRATION_TESTS") == "1":
-    pytest.skip("Set RYU_INTEGRATION_TESTS=1 to run integration tests", allow_module_level=True)
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    if os.environ.get("RYU_INTEGRATION_TESTS") != "1":
+        skip_msg = "Set RYU_INTEGRATION_TESTS=1 to run integration tests"
+        skip_marker = pytest.mark.skip(reason=skip_msg)
+        for item in items:
+            if "pulse_bus_integration" in str(item.fspath):
+                item.add_marker(skip_marker)
 
 
 @pytest.fixture

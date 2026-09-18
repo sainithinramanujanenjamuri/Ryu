@@ -17,7 +17,15 @@ build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-testpaths = ["core/pulse_bus/tests", "harness/cases", "harness/cases/pulse_bus_integration"]
+testpaths = [
+    "core/pulse_bus/tests",
+    "core/capabilities/tests",
+    "core/plans/tests",
+    "core/security/tests",
+    "core/space/tests",
+    "harness/cases",
+    "harness/cases/pulse_bus_integration",
+]
 pythonpath = ["core/pulse_bus/src", "."]
 addopts = "-ra -q"
 

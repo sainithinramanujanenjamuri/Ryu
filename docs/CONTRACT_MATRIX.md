@@ -83,8 +83,8 @@ The following rules apply to every contract.
 
 | ID      | Contract                                                        | Architecture Source              | Implementation Boundary               | Harness / Evidence                       | Roadmap     | Status      |
 | ------- | --------------------------------------------------------------- | -------------------------------- | ------------------------------------- | ---------------------------------------- | ----------- | ----------- |
-| ARC-001 | Everything happens inside a Space.                              | Architecture §4 / Law 1          | Space Kernel / Space boundary         | Space isolation suite                    | Phase 2     | `SPECIFIED` |
-| ARC-002 | Capabilities are requested, never owned.                        | Architecture §4 / Law 2          | Admission Control / CapabilityRequest | Capability-path tests                    | Phase 2     | `SPECIFIED` |
+| ARC-001 | Everything happens inside a Space.                              | Architecture §4 / Law 1          | Space Kernel / Space boundary         | `test_space_isolation.py`            | Phase 2     | `GATE_VERIFIED` |
+| ARC-002 | Capabilities are requested, never owned.                        | Architecture §4 / Law 2          | Admission Control / CapabilityRequest | `test_kernel_admission.py`           | Phase 2     | `GATE_VERIFIED` |
 | ARC-003 | Components communicate through Pulses.                          | Architecture / Law 3             | Pulse Bus                             | Pulse contract suite                     | Phase 1     | `SPECIFIED` |
 | ARC-004 | Knowledge belongs to the Space first.                           | Architecture §4 / Law 4          | Space Memory / Promotion pipeline     | Knowledge promotion tests                | Phase 10    | `SPECIFIED` |
 | ARC-005 | Humans define goals; RYU organizes execution.                   | Architecture / Law 5             | Orchestrator / Human Channel          | Full-loop tests                          | Phase 4 / 8 | `SPECIFIED` |
@@ -100,12 +100,12 @@ The following rules apply to every contract.
 
 | ID        | Contract                     | Required Invariant                                                                   | Implementation          | Harness                     | Roadmap      | Status      |
 | --------- | ---------------------------- | ------------------------------------------------------------------------------------ | ----------------------- | --------------------------- | ------------ | ----------- |
-| SPACE-001 | Space isolation              | Space A cannot access Space B's memory without an authorized promotion path.         | Space Kernel / Memory   | Cross-Space isolation       | Phase 2 / 10 | `SPECIFIED` |
-| SPACE-002 | Space resource isolation     | Resource grants are scoped to the owning Space.                                      | Resource Manager        | Cross-Space grant test      | Phase 3 / 7  | `SPECIFIED` |
-| SPACE-003 | Space agent isolation        | Agent state/subscriptions cannot cross Space boundary without defined authorization. | Space / Agent boundary  | Isolation suite             | Phase 2 / 4  | `SPECIFIED` |
-| SPACE-004 | Space artifact isolation     | Artifacts remain scoped to their Space unless explicitly promoted/exported.          | Artifact / Memory layer | Isolation suite             | Phase 2+     | `SPECIFIED` |
+| SPACE-001 | Space isolation              | Space A cannot access Space B's memory without an authorized promotion path.         | Space Kernel / Memory   | `test_space_isolation.py`               | Phase 2 / 10 | `GATE_VERIFIED`        |
+| SPACE-002 | Space resource isolation     | Resource grants are scoped to the owning Space.                                      | Resource Manager        | Cross-Space grant test                  | Phase 3 / 7  | `SPECIFIED`            |
+| SPACE-003 | Space agent isolation        | Agent state/subscriptions cannot cross Space boundary without defined authorization. | Space / Agent boundary  | Isolation suite                         | Phase 2 / 4  | `SPECIFIED`            |
+| SPACE-004 | Space artifact isolation     | Artifacts remain scoped to their Space unless explicitly promoted/exported.          | Artifact / Memory layer | Isolation suite                         | Phase 2+     | `SPECIFIED`            |
 | SPACE-005 | Space subscription isolation | Pulse subscriptions cannot observe another Space without authorization.              | Pulse Bus               | `test_misc.py` (`test_space_scoped_retrieval`) | Phase 1 / 2  | `INTEGRATION_VERIFIED` |
-| SPACE-006 | Space identity               | Every execution has an unambiguous Space identity.                                   | Space Kernel            | Identity tests              | Phase 2      | `SPECIFIED` |
+| SPACE-006 | Space identity               | Every execution has an unambiguous Space identity.                                   | Space Kernel            | `test_space_isolation.py`, `test_kernel.py` | Phase 2      | `GATE_VERIFIED`        |
 
 ---
 
@@ -146,13 +146,13 @@ Contract consumers must not create conflicting local definitions.
 
 | ID         | Contract               | Required Invariant                                                             | Implementation       | Harness               | Roadmap     | Status      |
 | ---------- | ---------------------- | ------------------------------------------------------------------------------ | -------------------- | --------------------- | ----------- | ----------- |
-| KERNEL-001 | Pre-dispatch admission | Every `CapabilityRequest` is checked before dispatch.                          | `admission.py`       | Admission suite       | Phase 2     | `SPECIFIED` |
-| KERNEL-002 | Hard stop              | Budget exhaustion produces zero downstream dispatches.                         | Admission Control    | Budget test           | Phase 2     | `SPECIFIED` |
-| KERNEL-003 | Single escalation      | Exactly one `space.budget.exceeded` occurs per `window_id`.                    | Admission / Windows  | Budget race test      | Phase 2     | `SPECIFIED` |
-| KERNEL-004 | Window rotation        | Human acknowledgement or replenishment creates a new `window_id`.              | `windows.py`         | Window rotation test  | Phase 2     | `SPECIFIED` |
-| KERNEL-005 | Approval required      | Soft threshold pauses continuation while allowing declared in-flight behavior. | Admission / Approver | Approval test         | Phase 2     | `SPECIFIED` |
-| KERNEL-006 | Degraded mode          | Cheaper models and optional nodes are handled according to policy.             | Admission            | Degraded-mode test    | Phase 2     | `SPECIFIED` |
-| KERNEL-007 | Attention budget       | N+1 simultaneous approvals pause Team Builder.                                 | `attention.py`       | Attention-budget test | Phase 2 / 8 | `SPECIFIED` |
+| KERNEL-001 | Pre-dispatch admission | Every `CapabilityRequest` is checked before dispatch.                          | `admission.py`       | `test_kernel_admission.py`                  | Phase 2     | `GATE_VERIFIED` |
+| KERNEL-002 | Hard stop              | Budget exhaustion produces zero downstream dispatches.                         | Admission Control    | `test_kernel_admission.py`                  | Phase 2     | `GATE_VERIFIED` |
+| KERNEL-003 | Single escalation      | Exactly one `space.budget.exceeded` occurs per `window_id`.                    | Admission / Windows  | `test_kernel_admission.py`, `test_windows.py` | Phase 2     | `GATE_VERIFIED` |
+| KERNEL-004 | Window rotation        | Human acknowledgement or replenishment creates a new `window_id`.              | `windows.py`         | `test_windows.py`                           | Phase 2     | `UNIT_VERIFIED` |
+| KERNEL-005 | Approval required      | Soft threshold pauses continuation while allowing declared in-flight behavior. | Admission / Approver | `test_admission.py`                         | Phase 2     | `UNIT_VERIFIED` |
+| KERNEL-006 | Degraded mode          | Cheaper models and optional nodes are handled according to policy.             | Admission            | `test_admission.py`                         | Phase 2     | `UNIT_VERIFIED` |
+| KERNEL-007 | Attention budget       | N+1 simultaneous approvals pause Team Builder.                                 | `attention.py`       | `test_approvals.py`                         | Phase 2 / 8 | `UNIT_VERIFIED` |
 
 ---
 
@@ -160,12 +160,12 @@ Contract consumers must not create conflicting local definitions.
 
 | ID       | Contract                | Required Invariant                                                | Implementation        | Harness           | Roadmap | Status      |
 | -------- | ----------------------- | ----------------------------------------------------------------- | --------------------- | ----------------- | ------- | ----------- |
-| PLAN-001 | CAS versioning          | Plan updates use authoritative `plan_version`.                    | `plan_store.py`       | CAS race          | Phase 2 | `SPECIFIED` |
-| PLAN-002 | Deterministic winner    | Concurrent Deltas have one authoritative winner.                  | `delta_apply.py`      | Plan CAS race     | Phase 2 | `SPECIFIED` |
-| PLAN-003 | Superseded notification | Losing Delta emits `plan.version.superseded`.                     | Delta application     | Supersession test | Phase 2 | `SPECIFIED` |
-| PLAN-004 | Rebase                  | Losing valid Delta may rebase according to policy.                | `delta_apply.py`      | Rebase test       | Phase 2 | `SPECIFIED` |
-| PLAN-005 | In-flight resolution    | Superseded nodes resolve via `finish`, `checkpoint`, or `cancel`. | `inflight_resolve.py` | In-flight test    | Phase 2 | `SPECIFIED` |
-| PLAN-006 | Rebase bound            | Replan storms cannot create unbounded CAS livelock.               | Kernel                | Chaos test        | Phase 2 | `SPECIFIED` |
+| PLAN-001 | CAS versioning          | Plan updates use authoritative `plan_version`.                    | `plan_store.py`                 | `test_kernel_admission.py`, `test_plan_engine.py` | Phase 2 | `GATE_VERIFIED` |
+| PLAN-002 | Deterministic winner    | Concurrent Deltas have one authoritative winner.                  | `plan_store.py`                 | `test_plan_engine.py`                             | Phase 2 | `UNIT_VERIFIED` |
+| PLAN-003 | Superseded notification | Losing Delta emits `plan.version.superseded`.                     | `plan_store.py`                 | `test_kernel_admission.py`                        | Phase 2 | `GATE_VERIFIED` |
+| PLAN-004 | Rebase                  | Losing valid Delta may rebase according to policy.                | `plan_store.py`                 | `test_plan_engine.py`                             | Phase 2 | `UNIT_VERIFIED` |
+| PLAN-005 | In-flight resolution    | Superseded nodes resolve via `finish`, `checkpoint`, or `cancel`. | `inflight_resolve.py`           | `test_plan_engine.py`                             | Phase 2 | `UNIT_VERIFIED` |
+| PLAN-006 | Rebase bound            | Replan storms cannot create unbounded CAS livelock.               | `plan_store.py` (ADR-0003)      | `test_plan_engine.py`                             | Phase 2 | `UNIT_VERIFIED` |
 
 ---
 
@@ -173,12 +173,12 @@ Contract consumers must not create conflicting local definitions.
 
 | ID         | Contract             | Required Invariant                                                | Implementation          | Harness                 | Roadmap     | Status      |
 | ---------- | -------------------- | ----------------------------------------------------------------- | ----------------------- | ----------------------- | ----------- | ----------- |
-| SECRET-001 | Secret references    | Requests carry `secret://` references, not resolved credentials.  | `secrets.py`            | Secret reference test   | Phase 2     | `SPECIFIED` |
-| SECRET-002 | Late resolution      | Secret resolution occurs at the last possible execution boundary. | Sandbox / secrets       | Execution test          | Phase 2 / 6 | `SPECIFIED` |
-| SECRET-003 | No Pulse leakage     | Resolved secret values never appear in Pulse payloads.            | Validator / persistence | Secret leak harness     | Phase 2     | `SPECIFIED` |
-| SECRET-004 | No handoff leakage   | Resolved secret values never enter Handoff Notes.                 | Context Manager         | Secret leak test        | Phase 2 / 5 | `SPECIFIED` |
-| SECRET-005 | No failure leakage   | Secrets cannot appear in failure messages, traces, or logs.       | Runtime / observability | Secret leak regression  | Phase 2+    | `SPECIFIED` |
-| SECRET-006 | LLM recording safety | Full-call recording must coexist with secret containment.         | LLM Recorder            | Recorder redaction test | Phase 5     | `SPECIFIED` |
+| SECRET-001 | Secret references    | Requests carry `secret://` references, not resolved credentials.  | `secrets.py`            | `test_secrets.py`             | Phase 2     | `UNIT_VERIFIED` |
+| SECRET-002 | Late resolution      | Secret resolution occurs at the last possible execution boundary. | Sandbox / `secrets.py`  | `test_secrets.py`             | Phase 2 / 6 | `UNIT_VERIFIED` |
+| SECRET-003 | No Pulse leakage     | Resolved secret values never appear in Pulse payloads.            | Validator / persistence | `test_security_containment.py`| Phase 2     | `GATE_VERIFIED` |
+| SECRET-004 | No handoff leakage   | Resolved secret values never enter Handoff Notes.                 | Context Manager         | Secret leak test        | Phase 2 / 5 | `SPECIFIED`     |
+| SECRET-005 | No failure leakage   | Secrets cannot appear in failure messages, traces, or logs.       | Runtime / observability | Secret leak regression  | Phase 2+    | `SPECIFIED`     |
+| SECRET-006 | LLM recording safety | Full-call recording must coexist with secret containment.         | LLM Recorder            | Recorder redaction test | Phase 5     | `SPECIFIED`     |
 
 ---
 
@@ -229,24 +229,24 @@ Contract consumers must not create conflicting local definitions.
 
 | ID        | Contract               | Required Invariant                                               | Implementation       | Harness           | Roadmap     | Status      |
 | --------- | ---------------------- | ---------------------------------------------------------------- | -------------------- | ----------------- | ----------- | ----------- |
-| TAINT-001 | Boundary taint         | Untrusted external content enters as tainted data.               | Channels / Workers   | Injection suite   | Phase 6 / 8 | `SPECIFIED` |
-| TAINT-002 | Propagation            | Taint propagates through the causal chain.                       | Pulse Bus            | Taint chain       | Phase 0 / 1 | `SPECIFIED` |
-| TAINT-003 | Forward-only clearance | Clearance affects future propagation only.                       | Taint manager        | Clearance test    | Phase 1 / 2 | `SPECIFIED` |
-| TAINT-004 | Clearance audit        | Clearance itself is represented by a Pulse.                      | Pulse Bus            | Clearance audit   | Phase 1 / 2 | `SPECIFIED` |
-| TAINT-005 | Grant protection       | Tainted instructions cannot silently produce high-risk grants.   | Admission / Security | Injection canary  | Phase 2 / 6 | `SPECIFIED` |
-| TAINT-006 | Anti-laundering        | Transforming tainted content must not silently erase provenance. | Taint system         | Propagation suite | Phase 2+    | `SPECIFIED` |
+| TAINT-001 | Boundary taint         | Untrusted external content enters as tainted data.               | Channels / Workers   | Injection suite               | Phase 6 / 8 | `SPECIFIED`     |
+| TAINT-002 | Propagation            | Taint propagates through the causal chain.                       | Pulse Bus            | Taint chain                   | Phase 0 / 1 | `SPECIFIED`     |
+| TAINT-003 | Forward-only clearance | Clearance affects future propagation only.                       | Taint manager        | Clearance test                | Phase 1 / 2 | `SPECIFIED`     |
+| TAINT-004 | Clearance audit        | Clearance itself is represented by a Pulse.                      | Pulse Bus            | Clearance audit               | Phase 1 / 2 | `SPECIFIED`     |
+| TAINT-005 | Grant protection       | Tainted instructions cannot silently produce high-risk grants.   | Admission / Security | `test_security_containment.py`| Phase 2 / 6 | `GATE_VERIFIED` |
+| TAINT-006 | Anti-laundering        | Transforming tainted content must not silently erase provenance. | Taint system         | Propagation suite             | Phase 2+    | `SPECIFIED`     |
 
 ---
 
 # 15. Human Approval Contracts
 
-| ID        | Contract          | Required Invariant                                            | Implementation | Harness         | Roadmap     | Status      |
-| --------- | ----------------- | ------------------------------------------------------------- | -------------- | --------------- | ----------- | ----------- |
-| HUMAN-001 | Approver identity | Every approval resolves to one authenticated `approver_id`.   | `approver.py`  | Approval loop   | Phase 2 / 8 | `SPECIFIED` |
-| HUMAN-002 | High-risk timeout | High-risk gates use declared `default_deny` semantics.        | Approver       | Stub-clock test | Phase 2     | `SPECIFIED` |
-| HUMAN-003 | Hold timeout      | Budget continuation follows declared `default_hold` behavior. | Approver       | Stub-clock test | Phase 2     | `SPECIFIED` |
-| HUMAN-004 | Attention budget  | N+1 concurrent approvals pause Team Builder.                  | `attention.py` | Attention test  | Phase 2 / 8 | `SPECIFIED` |
-| HUMAN-005 | Auditability      | Approval decision is reconstructable from Pulses.             | Pulse / Audit  | Approval audit  | Phase 8     | `SPECIFIED` |
+| ID        | Contract          | Required Invariant                                            | Implementation | Harness             | Roadmap     | Status          |
+| --------- | ----------------- | ------------------------------------------------------------- | -------------- | ------------------- | ----------- | --------------- |
+| HUMAN-001 | Approver identity | Every approval resolves to one authenticated `approver_id`.   | `approver.py`  | `test_approvals.py` | Phase 2 / 8 | `UNIT_VERIFIED` |
+| HUMAN-002 | High-risk timeout | High-risk gates use declared `default_deny` semantics.        | `approver.py`  | `test_approvals.py` | Phase 2     | `UNIT_VERIFIED` |
+| HUMAN-003 | Hold timeout      | Budget continuation follows declared `default_hold` behavior. | `approver.py`  | `test_approvals.py` | Phase 2     | `UNIT_VERIFIED` |
+| HUMAN-004 | Attention budget  | N+1 concurrent approvals pause Team Builder.                  | `attention.py` | `test_approvals.py` | Phase 2 / 8 | `UNIT_VERIFIED` |
+| HUMAN-005 | Auditability      | Approval decision is reconstructable from Pulses.             | Pulse / Audit  | Approval audit      | Phase 8     | `SPECIFIED`     |
 
 ---
 

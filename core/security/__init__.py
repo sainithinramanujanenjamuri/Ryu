@@ -1,8 +1,18 @@
-"""RYU AI Security & Sandbox Manager Package — Phase 0 Scaffold.
-Full implementation deferred to Phase 2/6.
+"""RYU AI Security & Sandbox Manager Package — Phase 2 Space Kernel.
+
+Enforces secret containment and execution boundary isolation (docs/Architecture §10, §16).
 """
 
-def resolve_secret_ref(uri: str) -> str:
-    """Resolve a secret:// URI within the authorized sandbox execution boundary."""
-    raise NotImplementedError("spec §10 — Phase 2")
+from __future__ import annotations
 
+from core.security.secrets import (
+    SecretRef,
+    SecretResolver,
+    SecretStore,
+)
+
+__all__ = [
+    "SecretRef",
+    "SecretResolver",
+    "SecretStore",
+]

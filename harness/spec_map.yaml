@@ -96,51 +96,57 @@ spec_map:
 
   - id: SPACE-001
     title: "Space isolation"
-    harness_case: "harness/cases/space/test_space_future.py"
+    harness_case: "harness/cases/space/test_space_isolation.py"
     roadmap_phase: 2
-    evidence_state: "SPECIFIED"
+    evidence_state: "IMPLEMENTED"
+
+  - id: SPACE-006
+    title: "Space identity enforcement"
+    harness_case: "harness/cases/space/test_space_isolation.py"
+    roadmap_phase: 2
+    evidence_state: "IMPLEMENTED"
 
   - id: KERNEL-001
     title: "Pre-dispatch admission control"
-    harness_case: "harness/cases/kernel/test_kernel_future.py"
+    harness_case: "harness/cases/kernel/test_kernel_admission.py"
     roadmap_phase: 2
-    evidence_state: "SPECIFIED"
+    evidence_state: "IMPLEMENTED"
 
-  - id: RESOURCE-005
-    title: "No double-grant on contested resource"
-    harness_case: "harness/cases/resources/test_resources_future.py"
-    roadmap_phase: 3
-    evidence_state: "SPECIFIED"
+  - id: KERNEL-002
+    title: "Hard stop at zero budget"
+    harness_case: "harness/cases/kernel/test_kernel_admission.py"
+    roadmap_phase: 2
+    evidence_state: "IMPLEMENTED"
 
-  - id: ORCH-006
-    title: "Zero-LLM deterministic orchestrator loop"
-    harness_case: "harness/cases/orchestrator/test_orchestrator_future.py"
-    roadmap_phase: 4
-    evidence_state: "SPECIFIED"
+  - id: KERNEL-003
+    title: "Single budget escalation per window"
+    harness_case: "harness/cases/kernel/test_kernel_admission.py"
+    roadmap_phase: 2
+    evidence_state: "IMPLEMENTED"
 
-  - id: AGENT-001
-    title: "Agent state machine"
-    harness_case: "harness/cases/agents/test_agents_future.py"
-    roadmap_phase: 5
-    evidence_state: "SPECIFIED"
+  - id: PLAN-001
+    title: "Plan CAS versioning"
+    harness_case: "harness/cases/kernel/test_kernel_admission.py"
+    roadmap_phase: 2
+    evidence_state: "IMPLEMENTED"
 
-  - id: WORKER-003
-    title: "Sandbox escape denied"
-    harness_case: "harness/cases/workers/test_workers_future.py"
-    roadmap_phase: 6
-    evidence_state: "SPECIFIED"
+  - id: PLAN-003
+    title: "Plan version superseded notification"
+    harness_case: "harness/cases/kernel/test_kernel_admission.py"
+    roadmap_phase: 2
+    evidence_state: "IMPLEMENTED"
 
-  - id: NODE-002
-    title: "Device-side grant enforcement"
-    harness_case: "harness/cases/node/test_node_future.py"
-    roadmap_phase: 7
-    evidence_state: "SPECIFIED"
+  - id: SECRET-003
+    title: "Secret containment in Pulse payload"
+    harness_case: "harness/cases/security/test_security_containment.py"
+    roadmap_phase: 2
+    evidence_state: "IMPLEMENTED"
 
   - id: TAINT-005
     title: "Tainted instruction cannot create unauthorized grant"
-    harness_case: "harness/cases/security/test_security_future.py"
-    roadmap_phase: "2/6"
-    evidence_state: "SPECIFIED"
+    harness_case: "harness/cases/security/test_security_containment.py"
+    roadmap_phase: 2
+    evidence_state: "IMPLEMENTED"
 
   - id: PULSE-008
     title: "Durable persistence"
