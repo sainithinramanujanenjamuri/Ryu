@@ -61,6 +61,18 @@ class PulseValidator:
 
     def _load_registry(self) -> set[str]:
         """Read pulse-types.json and return the set of registered type strings."""
+        try:
+            import sys
+            repo_root = _find_contracts_root().parent.parent
+            gen_path = repo_root / "contracts" / "codegen" / "python"
+            if str(gen_path) not in sys.path:
+                sys.path.insert(0, str(gen_path))
+            from generated.pulse_models import ALL_PULSE_TYPES  # type: ignore[import-not-found]
+            if ALL_PULSE_TYPES:
+                return set(ALL_PULSE_TYPES)
+        except Exception:
+            pass
+
         with open(self._registry_file, "r", encoding="utf-8") as f:
             data: dict[str, Any] = json.load(f)
         types = {entry["type"] for entry in data.get("types", [])}

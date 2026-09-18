@@ -6,13 +6,18 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
 
+[project.optional-dependencies]
+durable = ["psycopg2-binary>=2.9", "redis>=5.0"]
+dev = ["pytest>=7.0", "jsonschema>=4.21", "hypothesis>=6.0"]
+integration = ["psycopg2-binary>=2.9", "redis>=5.0", "pytest>=7.0", "hypothesis>=6.0"]
+
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-testpaths = ["core/pulse_bus/tests", "harness/cases"]
+testpaths = ["core/pulse_bus/tests", "harness/cases", "harness/cases/pulse_bus_integration"]
 pythonpath = ["core/pulse_bus/src", "."]
 addopts = "-ra -q"
 

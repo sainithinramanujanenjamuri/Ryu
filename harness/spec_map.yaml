@@ -142,3 +142,63 @@ spec_map:
     roadmap_phase: "2/6"
     evidence_state: "SPECIFIED"
 
+  - id: PULSE-008
+    title: "Durable persistence"
+    harness_case: "harness/cases/pulse_bus_integration/test_durable_append.py"
+    roadmap_phase: 1
+    evidence_state: "IMPLEMENTED"
+
+  - id: PULSE-009
+    title: "Replay"
+    harness_case: "harness/cases/pulse_bus_integration/test_durable_replay.py"
+    roadmap_phase: 1
+    evidence_state: "IMPLEMENTED"
+
+  - id: PULSE-010
+    title: "Schema fuzzing"
+    harness_case: "harness/cases/pulse_bus/test_schema_fuzz.py"
+    roadmap_phase: 1
+    evidence_state: "IMPLEMENTED"
+
+  - id: PULSE-011
+    title: "Registry/codegen consistency"
+    harness_case: "harness/cases/pulse_bus/test_validator_uses_generated_types.py"
+    roadmap_phase: 1
+    evidence_state: "IMPLEMENTED"
+
+  - id: TAINT-003
+    title: "Forward-only clearance"
+    harness_case: "harness/cases/pulse_bus_integration/test_misc.py"
+    roadmap_phase: 1
+    evidence_state: "IMPLEMENTED"
+
+  - id: TAINT-004
+    title: "Clearance audit"
+    harness_case: "harness/cases/pulse_bus_integration/test_misc.py"
+    roadmap_phase: 1
+    evidence_state: "IMPLEMENTED"
+
+  - id: REC-001
+    title: "Runtime restart"
+    harness_case: "harness/cases/pulse_bus_integration/test_durable_replay.py"
+    roadmap_phase: 1
+    evidence_state: "IMPLEMENTED"
+
+  - id: REC-002
+    title: "Pulse/state consistency"
+    harness_case: "harness/cases/pulse_bus_integration/test_failures.py"
+    roadmap_phase: 1
+    evidence_state: "IMPLEMENTED"
+
+  - id: SPACE-005
+    title: "Space scoped retrieval"
+    harness_case: "harness/cases/pulse_bus_integration/test_misc.py"
+    roadmap_phase: 1
+    evidence_state: "IMPLEMENTED"
+
+  - id: RESOURCE-008
+    title: "Backpressure severity"
+    harness_case: "harness/cases/pulse_bus_integration/test_misc.py"
+    roadmap_phase: 1
+    evidence_state: "IMPLEMENTED"
+
