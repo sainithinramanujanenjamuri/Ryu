@@ -1,0 +1,17 @@
+[project]
+name = "ryu-pulse-bus"
+version = "0.1.0"
+description = "RYU AI Phase 0 Pulse Bus — synchronous registry validation, payload schema validation, taint inheritance."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "jsonschema>=4.21.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+

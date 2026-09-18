@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "knowledge.promotion.requestedPayload",
+  "description": "Payload schema for Pulse type knowledge.promotion.requested",
+  "type": "object",
+  "properties": {
+    "knowledge_id": {
+      "type": "string"
+    },
+    "source_space_id": {
+      "type": "string"
+    },
+    "evidence_refs": {
+      "type": "array"
+    }
+  },
+  "required": [
+    "knowledge_id",
+    "source_space_id",
+    "evidence_refs"
+  ],
+  "additionalProperties": false
+}

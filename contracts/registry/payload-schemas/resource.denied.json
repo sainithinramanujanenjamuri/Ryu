@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "resource.deniedPayload",
+  "description": "Payload schema for Pulse type resource.denied",
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "resource_id",
+    "reason"
+  ],
+  "additionalProperties": false
+}

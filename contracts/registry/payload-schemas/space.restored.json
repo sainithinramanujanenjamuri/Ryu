@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "space.restoredPayload",
+  "description": "Payload schema for Pulse type space.restored",
+  "type": "object",
+  "properties": {
+    "space_id": {
+      "type": "string"
+    },
+    "checkpoint_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "space_id",
+    "checkpoint_id"
+  ],
+  "additionalProperties": false
+}

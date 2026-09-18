@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "space.budget.exceededPayload",
+  "description": "Payload schema for Pulse type space.budget.exceeded",
+  "type": "object",
+  "properties": {
+    "policy_mode": {
+      "type": "string",
+      "enum": [
+        "hard_stop",
+        "approval_required",
+        "degraded"
+      ]
+    },
+    "remaining_budget": {
+      "type": "number"
+    },
+    "window_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "policy_mode",
+    "remaining_budget",
+    "window_id"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GrantsAndLeases",
+  "description": "Schemas and contracts for resource grants, node capability grants, and resource leases.",
+  "version": "1.0.0",
+  "definitions": {
+    "ResourceGrant": {
+      "type": "object",
+      "properties": {
+        "space_id": { "type": "string" },
+        "resource_type": { "type": "string", "enum": ["cpu", "gpu", "node_capability", "model"] },
+        "scope": { "type": "string" },
+        "expiry": { "type": "string", "format": "date-time" },
+        "revocation_token": { "type": "string" }
+      },
+      "required": ["space_id", "resource_type", "scope", "expiry", "revocation_token"],
+      "additionalProperties": false
+    },
+    "NodeCapabilityGrant": {
+      "type": "object",
+      "properties": {
+        "node_id": { "type": "string" },
+        "space_id": { "type": "string" },
+        "capability": { "type": "string" },
+        "risk_tier": { "type": "string", "enum": ["low", "high"] },
+        "approver_id": { "type": "string" },
+        "expiry": { "type": "string", "format": "date-time" },
+        "revocation_token": { "type": "string" }
+      },
+      "required": ["node_id", "space_id", "capability", "risk_tier", "approver_id", "expiry", "revocation_token"],
+      "additionalProperties": false
+    },
+    "Lease": {
+      "type": "object",
+      "properties": {
+        "resource_id": {
+          "type": "object",
+          "properties": {
+            "resource_type": { "type": "string" },
+            "provider_id": { "type": "string" },
+            "instance_id": { "type": "string" }
+          },
+          "required": ["resource_type", "provider_id", "instance_id"],
+          "additionalProperties": false
+        },
+        "space_id": { "type": "string" },
+        "requester_id": { "type": "string" },
+        "lease_token": { "type": "string" },
+        "expiry": { "type": "string", "format": "date-time" }
+      },
+      "required": ["resource_id", "space_id", "requester_id", "lease_token", "expiry"],
+      "additionalProperties": false
+    }
+  }
+}
+

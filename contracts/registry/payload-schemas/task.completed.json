@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "task.completedPayload",
+  "description": "Payload schema for Pulse type task.completed",
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "result_ref": {
+      "type": "string"
+    },
+    "plan_version": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "task_id",
+    "result_ref",
+    "plan_version"
+  ],
+  "additionalProperties": false
+}

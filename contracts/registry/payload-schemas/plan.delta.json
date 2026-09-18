@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "plan.deltaPayload",
+  "description": "Payload schema for Pulse type plan.delta",
+  "type": "object",
+  "properties": {
+    "base_version": {
+      "type": "integer"
+    },
+    "resulting_version": {
+      "type": "integer"
+    },
+    "ops": {
+      "type": "array"
+    }
+  },
+  "required": [
+    "base_version",
+    "resulting_version",
+    "ops"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "task.failedPayload",
+  "description": "Payload schema for Pulse type task.failed",
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "error_class": {
+      "type": "string",
+      "pattern": "^(transient|terminal)\\..+"
+    },
+    "message": {
+      "type": "string"
+    },
+    "plan_version": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "task_id",
+    "error_class",
+    "message",
+    "plan_version"
+  ],
+  "additionalProperties": false
+}

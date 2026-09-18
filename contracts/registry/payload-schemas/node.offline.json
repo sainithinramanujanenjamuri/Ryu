@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "node.offlinePayload",
+  "description": "Payload schema for Pulse type node.offline",
+  "type": "object",
+  "properties": {
+    "node_id": {
+      "type": "string"
+    },
+    "last_heartbeat_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "node_id",
+    "last_heartbeat_at"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "security.taint.clearedPayload",
+  "description": "Payload schema for Pulse type security.taint.cleared",
+  "type": "object",
+  "properties": {
+    "correlation_id": {
+      "type": "string"
+    },
+    "approver_id": {
+      "type": "string"
+    },
+    "scope": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "correlation_id",
+    "approver_id",
+    "scope",
+    "timestamp"
+  ],
+  "additionalProperties": false
+}

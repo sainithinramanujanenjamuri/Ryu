@@ -1,0 +1,144 @@
+# RYU AI — Harness Spec Map
+# Version: 1.0
+# Purpose: Maps architecture acceptance criteria to contracts, harness cases, and roadmap phases.
+# This file is the traceability spine: Architecture → Contract → Test → Evidence
+
+spec_map:
+
+  # -----------------------------------------------------------------------
+  # Phase 0 — Real Cases (must PASS)
+  # -----------------------------------------------------------------------
+
+  - id: PULSE-001
+    title: "Unknown Pulse types are rejected synchronously"
+    architecture_section: "docs/Architecture §6 (Pulse Bus Nervous System)"
+    acceptance_criterion: >
+      An unknown Pulse type is rejected synchronously by the Bus with a
+      protocol-level error to the publisher, not admitted as a Pulse.
+    contract:
+      file: "contracts/registry/pulse-types.json"
+      rule: "type must be a registered member of the 38-entry registry"
+    harness_case: "harness/cases/pulse_bus/test_registry_rejects_unknown_type.py"
+    roadmap_phase: 0
+    evidence_state: "IMPLEMENTED"
+
+  - id: PULSE-012
+    title: "No unregistered type may enter the durable log"
+    architecture_section: "docs/Architecture §6, CONTRACT_MATRIX #6 PULSE-012"
+    acceptance_criterion: >
+      Publishing any unregistered Pulse type raises PulseRejectedError before append.
+    contract:
+      file: "contracts/registry/pulse-types.json"
+      rule: "all 38 types enumerated; unknown type = synchronous rejection"
+    harness_case: "harness/cases/pulse_bus/test_registry_rejects_unknown_type.py"
+    roadmap_phase: 0
+    evidence_state: "IMPLEMENTED"
+
+  - id: PULSE-004
+    title: "Causation chain reconstructable from parent_pulse_id"
+    architecture_section: "docs/Architecture §6 (Pulse Bus)"
+    acceptance_criterion: >
+      From any Pulse, walk parent_pulse_id back to root to reconstruct the exact
+      causal chain; cross-check against correlation_id to confirm same Command.
+    contract:
+      file: "contracts/registry/pulse-types.json"
+      rule: "parent_pulse_id and correlation_id fields required on Pulse contract"
+    harness_case: "harness/cases/pulse_bus/test_causation_walk.py"
+    roadmap_phase: 0
+    evidence_state: "IMPLEMENTED"
+
+  - id: PULSE-005
+    title: "Pulses in one execution chain retain correlation_id"
+    architecture_section: "docs/Architecture §6, CONTRACT_MATRIX #6 PULSE-005"
+    acceptance_criterion: >
+      All pulses in a causal chain share the same correlation_id tying them
+      to one originating Command.
+    contract:
+      file: "contracts/registry/pulse-types.json"
+      rule: "correlation_id field on Pulse contract"
+    harness_case: "harness/cases/pulse_bus/test_causation_walk.py"
+    roadmap_phase: 0
+    evidence_state: "IMPLEMENTED"
+
+  - id: PULSE-006
+    title: "Taint propagates through causal chain"
+    architecture_section: "docs/Architecture §10 (Prompt-Injection & Taint Model)"
+    acceptance_criterion: >
+      A tainted parent Pulse causes downstream Pulses (via parent_pulse_id) to
+      inherit taint=True. Clearance via security.taint.cleared is forward-only.
+    contract:
+      file: "contracts/registry/payload-schemas/security.taint.cleared.json"
+      rule: "taint field on Pulse; security.taint.cleared payload contract"
+    harness_case: "harness/cases/pulse_bus/test_taint_chain.py"
+    roadmap_phase: 0
+    evidence_state: "IMPLEMENTED"
+
+  # -----------------------------------------------------------------------
+  # Phase 0 — Core Dependency Boundary (enforced by dep-guard CI)
+  # -----------------------------------------------------------------------
+
+  - id: ARC-007
+    title: "core/ has no dependency on agents/, workers/, skills/, workflows/"
+    architecture_section: "docs/Architecture (dependency direction), AGENTS.md §4"
+    acceptance_criterion: >
+      The deterministic core must remain independent of higher-level layers.
+      No file under core/ may import agents, workers, skills, or workflows.
+    contract:
+      file: "scripts/dep_guard.py"
+      rule: "AST-based import scan; non-zero exit on violation"
+    harness_case: "scripts/dep_guard.py (CI gate, not a pytest case)"
+    roadmap_phase: 0
+    evidence_state: "IMPLEMENTED"
+
+  # -----------------------------------------------------------------------
+  # Future phases — cases exist but skip (do NOT remove these entries)
+  # -----------------------------------------------------------------------
+
+  - id: SPACE-001
+    title: "Space isolation"
+    harness_case: "harness/cases/space/test_space_future.py"
+    roadmap_phase: 2
+    evidence_state: "SPECIFIED"
+
+  - id: KERNEL-001
+    title: "Pre-dispatch admission control"
+    harness_case: "harness/cases/kernel/test_kernel_future.py"
+    roadmap_phase: 2
+    evidence_state: "SPECIFIED"
+
+  - id: RESOURCE-005
+    title: "No double-grant on contested resource"
+    harness_case: "harness/cases/resources/test_resources_future.py"
+    roadmap_phase: 3
+    evidence_state: "SPECIFIED"
+
+  - id: ORCH-006
+    title: "Zero-LLM deterministic orchestrator loop"
+    harness_case: "harness/cases/orchestrator/test_orchestrator_future.py"
+    roadmap_phase: 4
+    evidence_state: "SPECIFIED"
+
+  - id: AGENT-001
+    title: "Agent state machine"
+    harness_case: "harness/cases/agents/test_agents_future.py"
+    roadmap_phase: 5
+    evidence_state: "SPECIFIED"
+
+  - id: WORKER-003
+    title: "Sandbox escape denied"
+    harness_case: "harness/cases/workers/test_workers_future.py"
+    roadmap_phase: 6
+    evidence_state: "SPECIFIED"
+
+  - id: NODE-002
+    title: "Device-side grant enforcement"
+    harness_case: "harness/cases/node/test_node_future.py"
+    roadmap_phase: 7
+    evidence_state: "SPECIFIED"
+
+  - id: TAINT-005
+    title: "Tainted instruction cannot create unauthorized grant"
+    harness_case: "harness/cases/security/test_security_future.py"
+    roadmap_phase: "2/6"
+    evidence_state: "SPECIFIED"
+

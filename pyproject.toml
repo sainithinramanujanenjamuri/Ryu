@@ -1,0 +1,32 @@
+[project]
+name = "ryu-ai"
+version = "0.1.0"
+description = "Space-Centric Cognitive Architecture (SCCA)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["core/pulse_bus/tests", "harness/cases"]
+pythonpath = ["core/pulse_bus/src", "."]
+addopts = "-ra -q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = []
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+

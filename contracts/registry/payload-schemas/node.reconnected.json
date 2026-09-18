@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "node.reconnectedPayload",
+  "description": "Payload schema for Pulse type node.reconnected",
+  "type": "object",
+  "properties": {
+    "node_id": {
+      "type": "string"
+    },
+    "lease_token": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "node_id",
+    "lease_token"
+  ],
+  "additionalProperties": false
+}

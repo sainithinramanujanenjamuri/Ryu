@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "worker.tool.calledPayload",
+  "description": "Payload schema for Pulse type worker.tool.called",
+  "type": "object",
+  "properties": {
+    "tool_id": {
+      "type": "string"
+    },
+    "capability": {
+      "type": "string"
+    },
+    "attempt": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "tool_id",
+    "capability",
+    "attempt"
+  ],
+  "additionalProperties": false
+}

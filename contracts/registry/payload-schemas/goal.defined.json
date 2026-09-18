@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "goal.definedPayload",
+  "description": "Payload schema for Pulse type goal.defined",
+  "type": "object",
+  "properties": {
+    "goal_id": {
+      "type": "string"
+    },
+    "goal_spec": {
+      "type": "object"
+    },
+    "single_agent_eligible": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "goal_id",
+    "goal_spec",
+    "single_agent_eligible"
+  ],
+  "additionalProperties": false
+}

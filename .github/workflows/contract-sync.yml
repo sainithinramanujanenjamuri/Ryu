@@ -1,0 +1,30 @@
+name: Contract Sync
+
+on:
+  push:
+    paths:
+      - "docs/Architecture"
+      - "contracts/registry/pulse-types.json"
+  pull_request:
+    paths:
+      - "docs/Architecture"
+      - "contracts/registry/pulse-types.json"
+
+jobs:
+  contract-sync:
+    name: "Verify Architecture §16 ↔ pulse-types.json"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run contract sync check
+        run: python scripts/contract_sync.py
+
+# NOTE: Scope of this workflow (Phase 0):
+#   Verifies docs/Architecture §16 Pulse Type Registry table against
+#   contracts/registry/pulse-types.json only.
+#   Full contract surface synchronization (payload schemas, failure taxonomy,
+#   capability-risks, grants) requires Phase 1 tooling.
+

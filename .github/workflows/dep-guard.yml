@@ -1,0 +1,24 @@
+name: Dependency Guard
+
+on:
+  push:
+    paths:
+      - "core/**"
+      - "scripts/dep_guard.py"
+  pull_request:
+    paths:
+      - "core/**"
+      - "scripts/dep_guard.py"
+
+jobs:
+  dep-guard:
+    name: "core/ must not import agents/, workers/, skills/, workflows/"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run dependency boundary guard
+        run: python scripts/dep_guard.py
+

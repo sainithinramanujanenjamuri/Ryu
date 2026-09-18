@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "worker.tool.succeededPayload",
+  "description": "Payload schema for Pulse type worker.tool.succeeded",
+  "type": "object",
+  "properties": {
+    "tool_id": {
+      "type": "string"
+    },
+    "result_ref": {
+      "type": "string"
+    },
+    "attempt": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "tool_id",
+    "result_ref",
+    "attempt"
+  ],
+  "additionalProperties": false
+}

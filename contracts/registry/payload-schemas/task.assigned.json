@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "task.assignedPayload",
+  "description": "Payload schema for Pulse type task.assigned",
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "assignee_id": {
+      "type": "string"
+    },
+    "plan_version": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "task_id",
+    "assignee_id",
+    "plan_version"
+  ],
+  "additionalProperties": false
+}

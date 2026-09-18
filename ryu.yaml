@@ -1,0 +1,6 @@
+version: "0.1.0"
+phase: 0
+architecture: "SCCA"
+python: ">=3.12"
+contract_registry: "contracts/registry/"
+

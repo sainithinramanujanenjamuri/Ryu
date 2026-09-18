@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "security.grant.approvedPayload",
+  "description": "Payload schema for Pulse type security.grant.approved",
+  "type": "object",
+  "properties": {
+    "request_id": {
+      "type": "string"
+    },
+    "capability": {
+      "type": "string"
+    },
+    "risk_tier": {
+      "type": "string",
+      "enum": [
+        "low",
+        "high"
+      ]
+    },
+    "approver_id": {
+      "type": "string"
+    },
+    "expiry": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "request_id",
+    "capability",
+    "risk_tier",
+    "approver_id",
+    "expiry"
+  ],
+  "additionalProperties": false
+}

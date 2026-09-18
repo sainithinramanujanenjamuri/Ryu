@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "knowledge.promotion.rejectedPayload",
+  "description": "Payload schema for Pulse type knowledge.promotion.rejected",
+  "type": "object",
+  "properties": {
+    "knowledge_id": {
+      "type": "string"
+    },
+    "approver_id": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "knowledge_id",
+    "approver_id",
+    "reason"
+  ],
+  "additionalProperties": false
+}

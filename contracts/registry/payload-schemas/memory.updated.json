@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "memory.updatedPayload",
+  "description": "Payload schema for Pulse type memory.updated",
+  "type": "object",
+  "properties": {
+    "memory_id": {
+      "type": "string"
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "task",
+        "agent",
+        "space"
+      ]
+    },
+    "version": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "memory_id",
+    "scope",
+    "version"
+  ],
+  "additionalProperties": false
+}

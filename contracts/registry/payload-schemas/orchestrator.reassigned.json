@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "orchestrator.reassignedPayload",
+  "description": "Payload schema for Pulse type orchestrator.reassigned",
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "from_assignee_id": {
+      "type": "string"
+    },
+    "to_assignee_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "task_id",
+    "from_assignee_id",
+    "to_assignee_id"
+  ],
+  "additionalProperties": false
+}

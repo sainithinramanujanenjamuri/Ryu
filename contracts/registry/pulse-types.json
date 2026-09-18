@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PulseTypeRegistry",
+  "description": "Authoritative registry of all 38 valid Pulse types in RYU AI, organized by namespace.",
+  "version": "1.0.0",
+  "types": [
+    {
+      "type": "space.created",
+      "namespace": "space",
+      "default_severity": "info",
+      "description": "Emitted when a new Space is instantiated."
+    },
+    {
+      "type": "space.restored",
+      "namespace": "space",
+      "default_severity": "info",
+      "description": "Emitted when an existing Space is restored from checkpoint."
+    },
+    {
+      "type": "space.completed",
+      "namespace": "space",
+      "default_severity": "info",
+      "description": "Emitted when a Space finishes execution or reaches its goal."
+    },
+    {
+      "type": "space.archived",
+      "namespace": "space",
+      "default_severity": "info",
+      "description": "Emitted when a Space's artifacts and timeline are archived."
+    },
+    {
+      "type": "space.budget.exceeded",
+      "namespace": "space",
+      "default_severity": "critical",
+      "description": "Emitted when Space spend exhausts or breaches budget limits."
+    },
+    {
+      "type": "goal.defined",
+      "namespace": "goal",
+      "default_severity": "info",
+      "description": "Emitted when a Command is converted into a structured Goal Spec."
+    },
+    {
+      "type": "plan.created",
+      "namespace": "plan",
+      "default_severity": "info",
+      "description": "Emitted when an initial versioned Task Graph is planned."
+    },
+    {
+      "type": "plan.delta",
+      "namespace": "plan",
+      "default_severity": "info",
+      "description": "Emitted when a plan delta modification is proposed."
+    },
+    {
+      "type": "plan.version.superseded",
+      "namespace": "plan",
+      "default_severity": "warning",
+      "description": "Emitted when a concurrent replan loses CAS commit to a winning delta."
+    },
+    {
+      "type": "task.assigned",
+      "namespace": "task",
+      "default_severity": "info",
+      "description": "Emitted when a Task Graph node is assigned to an agent or worker."
+    },
+    {
+      "type": "task.started",
+      "namespace": "task",
+      "default_severity": "info",
+      "description": "Emitted when an assigned task begins execution."
+    },
+    {
+      "type": "task.completed",
+      "namespace": "task",
+      "default_severity": "info",
+      "description": "Emitted when a task finishes successfully with an artifact reference."
+    },
+    {
+      "type": "task.failed",
+      "namespace": "task",
+      "default_severity": "error",
+      "description": "Emitted when a task encounters a transient or terminal failure."
+    },
+    {
+      "type": "task.retried",
+      "namespace": "task",
+      "default_severity": "warning",
+      "description": "Emitted when a transient task failure triggers a retry attempt."
+    },
+    {
+      "type": "worker.tool.called",
+      "namespace": "worker",
+      "default_severity": "info",
+      "description": "Emitted when a worker invokes an underlying tool capability."
+    },
+    {
+      "type": "worker.tool.succeeded",
+      "namespace": "worker",
+      "default_severity": "info",
+      "description": "Emitted when a tool invocation completes successfully."
+    },
+    {
+      "type": "worker.tool.failed",
+      "namespace": "worker",
+      "default_severity": "error",
+      "description": "Emitted when a tool invocation fails."
+    },
+    {
+      "type": "orchestrator.plan.delta",
+      "namespace": "orchestrator",
+      "default_severity": "info",
+      "description": "Emitted when the orchestrator applies a plan delta revision."
+    },
+    {
+      "type": "orchestrator.reassigned",
+      "namespace": "orchestrator",
+      "default_severity": "info",
+      "description": "Emitted when the orchestrator reassigns a task between execution roles."
+    },
+    {
+      "type": "resource.requested",
+      "namespace": "resource",
+      "default_severity": "info",
+      "description": "Emitted when a worker or agent requests a leased resource."
+    },
+    {
+      "type": "resource.granted",
+      "namespace": "resource",
+      "default_severity": "info",
+      "description": "Emitted when the Resource Manager grants a lease on a resource."
+    },
+    {
+      "type": "resource.denied",
+      "namespace": "resource",
+      "default_severity": "warning",
+      "description": "Emitted when a resource request is rejected."
+    },
+    {
+      "type": "resource.released",
+      "namespace": "resource",
+      "default_severity": "info",
+      "description": "Emitted when a held resource lease is relinquished."
+    },
+    {
+      "type": "resource.conflict",
+      "namespace": "resource",
+      "default_severity": "warning",
+      "description": "Emitted when a resource request contends for an existing lease and is queued."
+    },
+    {
+      "type": "rate.limited",
+      "namespace": "rate",
+      "default_severity": "info",
+      "description": "Emitted when a requester exceeds rate quotas and requests are queued; backpressure, not failure."
+    },
+    {
+      "type": "node.capability.granted",
+      "namespace": "node",
+      "default_severity": "info",
+      "description": "Emitted when a capability grant on a remote node runtime is issued."
+    },
+    {
+      "type": "node.capability.revoked",
+      "namespace": "node",
+      "default_severity": "warning",
+      "description": "Emitted when an active node capability grant is revoked."
+    },
+    {
+      "type": "node.offline",
+      "namespace": "node",
+      "default_severity": "warning",
+      "description": "Emitted when a node runtime misses heartbeats beyond TTL."
+    },
+    {
+      "type": "node.reconnected",
+      "namespace": "node",
+      "default_severity": "info",
+      "description": "Emitted when an offline node reconnects and re-establishes its lease."
+    },
+    {
+      "type": "security.taint.detected",
+      "namespace": "security",
+      "default_severity": "warning",
+      "description": "Emitted when untrusted external content enters the pulse stream."
+    },
+    {
+      "type": "security.taint.cleared",
+      "namespace": "security",
+      "default_severity": "info",
+      "description": "Emitted when human approval clears taint forward for a correlation_id."
+    },
+    {
+      "type": "security.grant.approved",
+      "namespace": "security",
+      "default_severity": "info",
+      "description": "Emitted when an authorized approver approves a high-risk capability grant."
+    },
+    {
+      "type": "security.grant.denied",
+      "namespace": "security",
+      "default_severity": "warning",
+      "description": "Emitted when a capability grant request is denied."
+    },
+    {
+      "type": "knowledge.promotion.requested",
+      "namespace": "knowledge",
+      "default_severity": "info",
+      "description": "Emitted when Space-local knowledge is proposed for global promotion."
+    },
+    {
+      "type": "knowledge.promotion.approved",
+      "namespace": "knowledge",
+      "default_severity": "info",
+      "description": "Emitted when promotion to global knowledge is approved."
+    },
+    {
+      "type": "knowledge.promotion.rejected",
+      "namespace": "knowledge",
+      "default_severity": "warning",
+      "description": "Emitted when promotion to global knowledge is rejected by validator or approver."
+    },
+    {
+      "type": "memory.updated",
+      "namespace": "memory",
+      "default_severity": "info",
+      "description": "Emitted when memory state (task, agent, or space scope) is updated."
+    },
+    {
+      "type": "experience.stored",
+      "namespace": "memory",
+      "default_severity": "info",
+      "description": "Emitted when structured experience including counterfactual is stored."
+    }
+  ]
+}
+

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "resource.conflictPayload",
+  "description": "Payload schema for Pulse type resource.conflict",
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "type": "string"
+    },
+    "queue_position": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "resource_id",
+    "queue_position"
+  ],
+  "additionalProperties": false
+}

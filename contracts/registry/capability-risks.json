@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CapabilityRiskTiers",
+  "description": "Registry of capability risk classifications binding tools and skills to risk tiers.",
+  "version": "1.0.0",
+  "risk_tiers": {
+    "low": {
+      "description": "Read-only, sandboxed operations without external side effects.",
+      "policy": "Auto-approved within session for untainted chains; requires approval if chain is tainted.",
+      "capabilities": [
+        "file.read",
+        "search.query",
+        "python.eval_sandboxed",
+        "data.analyze",
+        "retrieval.fetch",
+        "vision.inspect",
+        "audio.transcribe"
+      ]
+    },
+    "high": {
+      "description": "Device control, irreversible side effects, external messaging, payment execution, or process execution.",
+      "policy": "Always requires fresh human approval via security.grant.approved, regardless of taint state.",
+      "capabilities": [
+        "terminal.exec",
+        "file.write",
+        "file.delete",
+        "node.screen_capture",
+        "node.process_control",
+        "network.outbound_request",
+        "payment.charge",
+        "email.send",
+        "browser.action",
+        "system.configure"
+      ]
+    }
+  }
+}
+

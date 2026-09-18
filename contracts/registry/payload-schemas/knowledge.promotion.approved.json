@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "knowledge.promotion.approvedPayload",
+  "description": "Payload schema for Pulse type knowledge.promotion.approved",
+  "type": "object",
+  "properties": {
+    "knowledge_id": {
+      "type": "string"
+    },
+    "approver_id": {
+      "type": "string"
+    },
+    "global_version": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "knowledge_id",
+    "approver_id",
+    "global_version"
+  ],
+  "additionalProperties": false
+}

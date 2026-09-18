@@ -1,0 +1,714 @@
+{
+  "generated_at": "2026-09-18T12:00:00Z",
+  "description": "Deterministic test vectors derived from contracts/registry",
+  "valid_vectors": [
+    {
+      "type": "space.created",
+      "valid": true,
+      "payload": {
+        "space_id": "sample_space_id",
+        "owner_id": "sample_owner_id"
+      }
+    },
+    {
+      "type": "space.restored",
+      "valid": true,
+      "payload": {
+        "space_id": "sample_space_id",
+        "checkpoint_id": "sample_checkpoint_id"
+      }
+    },
+    {
+      "type": "space.completed",
+      "valid": true,
+      "payload": {
+        "space_id": "sample_space_id",
+        "outcome": "sample_outcome"
+      }
+    },
+    {
+      "type": "space.archived",
+      "valid": true,
+      "payload": {
+        "space_id": "sample_space_id",
+        "archive_id": "sample_archive_id"
+      }
+    },
+    {
+      "type": "space.budget.exceeded",
+      "valid": true,
+      "payload": {
+        "policy_mode": "hard_stop",
+        "remaining_budget": 100.0,
+        "window_id": "sample_window_id"
+      }
+    },
+    {
+      "type": "goal.defined",
+      "valid": true,
+      "payload": {
+        "goal_id": "sample_goal_id",
+        "goal_spec": {
+          "key": "value"
+        },
+        "single_agent_eligible": true
+      }
+    },
+    {
+      "type": "plan.created",
+      "valid": true,
+      "payload": {
+        "plan_version": 1,
+        "task_count": 1
+      }
+    },
+    {
+      "type": "plan.delta",
+      "valid": true,
+      "payload": {
+        "base_version": 1,
+        "resulting_version": 1,
+        "ops": [
+          "ref_1"
+        ]
+      }
+    },
+    {
+      "type": "plan.version.superseded",
+      "valid": true,
+      "payload": {
+        "superseded_version": 1,
+        "current_version": 1,
+        "winning_delta_id": "sample_winning_delta_id"
+      }
+    },
+    {
+      "type": "task.assigned",
+      "valid": true,
+      "payload": {
+        "task_id": "sample_task_id",
+        "assignee_id": "sample_assignee_id",
+        "plan_version": 1
+      }
+    },
+    {
+      "type": "task.started",
+      "valid": true,
+      "payload": {
+        "task_id": "sample_task_id",
+        "plan_version": 1
+      }
+    },
+    {
+      "type": "task.completed",
+      "valid": true,
+      "payload": {
+        "task_id": "sample_task_id",
+        "result_ref": "sample_result_ref",
+        "plan_version": 1
+      }
+    },
+    {
+      "type": "task.failed",
+      "valid": true,
+      "payload": {
+        "task_id": "sample_task_id",
+        "error_class": "transient.timeout",
+        "message": "sample_message",
+        "plan_version": 1
+      }
+    },
+    {
+      "type": "task.retried",
+      "valid": true,
+      "payload": {
+        "task_id": "sample_task_id",
+        "attempt": 1,
+        "error_class": "transient.timeout"
+      }
+    },
+    {
+      "type": "worker.tool.called",
+      "valid": true,
+      "payload": {
+        "tool_id": "sample_tool_id",
+        "capability": "sample_capability",
+        "attempt": 1
+      }
+    },
+    {
+      "type": "worker.tool.succeeded",
+      "valid": true,
+      "payload": {
+        "tool_id": "sample_tool_id",
+        "result_ref": "sample_result_ref",
+        "attempt": 1
+      }
+    },
+    {
+      "type": "worker.tool.failed",
+      "valid": true,
+      "payload": {
+        "error_class": "transient.timeout",
+        "message": "sample_message",
+        "retryable": true,
+        "attempt": 1
+      }
+    },
+    {
+      "type": "orchestrator.plan.delta",
+      "valid": true,
+      "payload": {
+        "delta_id": "sample_delta_id",
+        "base_version": 1,
+        "resulting_version": 1
+      }
+    },
+    {
+      "type": "orchestrator.reassigned",
+      "valid": true,
+      "payload": {
+        "task_id": "sample_task_id",
+        "from_assignee_id": "sample_from_assignee_id",
+        "to_assignee_id": "sample_to_assignee_id"
+      }
+    },
+    {
+      "type": "resource.requested",
+      "valid": true,
+      "payload": {
+        "resource_id": "sample_resource_id",
+        "requester_id": "sample_requester_id",
+        "scope": "sample_scope"
+      }
+    },
+    {
+      "type": "resource.granted",
+      "valid": true,
+      "payload": {
+        "resource_id": "sample_resource_id",
+        "lease_token": "sample_lease_token",
+        "expiry": "2026-09-18T12:00:00Z"
+      }
+    },
+    {
+      "type": "resource.denied",
+      "valid": true,
+      "payload": {
+        "resource_id": "sample_resource_id",
+        "reason": "sample_reason"
+      }
+    },
+    {
+      "type": "resource.released",
+      "valid": true,
+      "payload": {
+        "resource_id": "sample_resource_id",
+        "lease_token": "sample_lease_token"
+      }
+    },
+    {
+      "type": "resource.conflict",
+      "valid": true,
+      "payload": {
+        "resource_id": "sample_resource_id",
+        "queue_position": 1
+      }
+    },
+    {
+      "type": "rate.limited",
+      "valid": true,
+      "payload": {
+        "requester_id": "sample_requester_id",
+        "budget_type": "tokens",
+        "retry_after": 1
+      }
+    },
+    {
+      "type": "node.capability.granted",
+      "valid": true,
+      "payload": {
+        "node_id": "sample_node_id",
+        "capability": "sample_capability",
+        "risk_tier": "low",
+        "expiry": "2026-09-18T12:00:00Z"
+      }
+    },
+    {
+      "type": "node.capability.revoked",
+      "valid": true,
+      "payload": {
+        "node_id": "sample_node_id",
+        "capability": "sample_capability",
+        "revoked_by": "sample_revoked_by"
+      }
+    },
+    {
+      "type": "node.offline",
+      "valid": true,
+      "payload": {
+        "node_id": "sample_node_id",
+        "last_heartbeat_at": "2026-09-18T12:00:00Z"
+      }
+    },
+    {
+      "type": "node.reconnected",
+      "valid": true,
+      "payload": {
+        "node_id": "sample_node_id",
+        "lease_token": "sample_lease_token"
+      }
+    },
+    {
+      "type": "security.taint.detected",
+      "valid": true,
+      "payload": {
+        "correlation_id": "sample_correlation_id",
+        "source_pulse_id": "sample_source_pulse_id",
+        "reason": "sample_reason"
+      }
+    },
+    {
+      "type": "security.taint.cleared",
+      "valid": true,
+      "payload": {
+        "correlation_id": "sample_correlation_id",
+        "approver_id": "sample_approver_id",
+        "scope": "sample_scope",
+        "timestamp": "2026-09-18T12:00:00Z"
+      }
+    },
+    {
+      "type": "security.grant.approved",
+      "valid": true,
+      "payload": {
+        "request_id": "sample_request_id",
+        "capability": "sample_capability",
+        "risk_tier": "low",
+        "approver_id": "sample_approver_id",
+        "expiry": "2026-09-18T12:00:00Z"
+      }
+    },
+    {
+      "type": "security.grant.denied",
+      "valid": true,
+      "payload": {
+        "request_id": "sample_request_id",
+        "capability": "sample_capability",
+        "reason": "sample_reason"
+      }
+    },
+    {
+      "type": "knowledge.promotion.requested",
+      "valid": true,
+      "payload": {
+        "knowledge_id": "sample_knowledge_id",
+        "source_space_id": "sample_source_space_id",
+        "evidence_refs": [
+          "ref_1"
+        ]
+      }
+    },
+    {
+      "type": "knowledge.promotion.approved",
+      "valid": true,
+      "payload": {
+        "knowledge_id": "sample_knowledge_id",
+        "approver_id": "sample_approver_id",
+        "global_version": 1
+      }
+    },
+    {
+      "type": "knowledge.promotion.rejected",
+      "valid": true,
+      "payload": {
+        "knowledge_id": "sample_knowledge_id",
+        "approver_id": "sample_approver_id",
+        "reason": "sample_reason"
+      }
+    },
+    {
+      "type": "memory.updated",
+      "valid": true,
+      "payload": {
+        "memory_id": "sample_memory_id",
+        "scope": "task",
+        "version": 1
+      }
+    },
+    {
+      "type": "experience.stored",
+      "valid": true,
+      "payload": {
+        "experience_id": "sample_experience_id",
+        "situation": {
+          "key": "value"
+        },
+        "action": {
+          "key": "value"
+        },
+        "outcome": "sample_outcome",
+        "counterfactual": "sample_counterfactual",
+        "applicable_context": {
+          "key": "value"
+        },
+        "stored_at": "2026-09-18T12:00:00Z"
+      }
+    }
+  ],
+  "invalid_vectors": [
+    {
+      "type": "space.created",
+      "valid": false,
+      "error_reason": "missing_field_space_id",
+      "payload": {
+        "owner_id": "sample_owner_id"
+      }
+    },
+    {
+      "type": "space.restored",
+      "valid": false,
+      "error_reason": "missing_field_space_id",
+      "payload": {
+        "checkpoint_id": "sample_checkpoint_id"
+      }
+    },
+    {
+      "type": "space.completed",
+      "valid": false,
+      "error_reason": "missing_field_space_id",
+      "payload": {
+        "outcome": "sample_outcome"
+      }
+    },
+    {
+      "type": "space.archived",
+      "valid": false,
+      "error_reason": "missing_field_space_id",
+      "payload": {
+        "archive_id": "sample_archive_id"
+      }
+    },
+    {
+      "type": "space.budget.exceeded",
+      "valid": false,
+      "error_reason": "missing_field_policy_mode",
+      "payload": {
+        "remaining_budget": 100.0,
+        "window_id": "sample_window_id"
+      }
+    },
+    {
+      "type": "goal.defined",
+      "valid": false,
+      "error_reason": "missing_field_goal_id",
+      "payload": {
+        "goal_spec": {
+          "key": "value"
+        },
+        "single_agent_eligible": true
+      }
+    },
+    {
+      "type": "plan.created",
+      "valid": false,
+      "error_reason": "missing_field_plan_version",
+      "payload": {
+        "task_count": 1
+      }
+    },
+    {
+      "type": "plan.delta",
+      "valid": false,
+      "error_reason": "missing_field_base_version",
+      "payload": {
+        "resulting_version": 1,
+        "ops": [
+          "ref_1"
+        ]
+      }
+    },
+    {
+      "type": "plan.version.superseded",
+      "valid": false,
+      "error_reason": "missing_field_superseded_version",
+      "payload": {
+        "current_version": 1,
+        "winning_delta_id": "sample_winning_delta_id"
+      }
+    },
+    {
+      "type": "task.assigned",
+      "valid": false,
+      "error_reason": "missing_field_task_id",
+      "payload": {
+        "assignee_id": "sample_assignee_id",
+        "plan_version": 1
+      }
+    },
+    {
+      "type": "task.started",
+      "valid": false,
+      "error_reason": "missing_field_task_id",
+      "payload": {
+        "plan_version": 1
+      }
+    },
+    {
+      "type": "task.completed",
+      "valid": false,
+      "error_reason": "missing_field_task_id",
+      "payload": {
+        "result_ref": "sample_result_ref",
+        "plan_version": 1
+      }
+    },
+    {
+      "type": "task.failed",
+      "valid": false,
+      "error_reason": "missing_field_task_id",
+      "payload": {
+        "error_class": "transient.timeout",
+        "message": "sample_message",
+        "plan_version": 1
+      }
+    },
+    {
+      "type": "task.retried",
+      "valid": false,
+      "error_reason": "missing_field_task_id",
+      "payload": {
+        "attempt": 1,
+        "error_class": "transient.timeout"
+      }
+    },
+    {
+      "type": "worker.tool.called",
+      "valid": false,
+      "error_reason": "missing_field_tool_id",
+      "payload": {
+        "capability": "sample_capability",
+        "attempt": 1
+      }
+    },
+    {
+      "type": "worker.tool.succeeded",
+      "valid": false,
+      "error_reason": "missing_field_tool_id",
+      "payload": {
+        "result_ref": "sample_result_ref",
+        "attempt": 1
+      }
+    },
+    {
+      "type": "worker.tool.failed",
+      "valid": false,
+      "error_reason": "missing_field_error_class",
+      "payload": {
+        "message": "sample_message",
+        "retryable": true,
+        "attempt": 1
+      }
+    },
+    {
+      "type": "orchestrator.plan.delta",
+      "valid": false,
+      "error_reason": "missing_field_delta_id",
+      "payload": {
+        "base_version": 1,
+        "resulting_version": 1
+      }
+    },
+    {
+      "type": "orchestrator.reassigned",
+      "valid": false,
+      "error_reason": "missing_field_task_id",
+      "payload": {
+        "from_assignee_id": "sample_from_assignee_id",
+        "to_assignee_id": "sample_to_assignee_id"
+      }
+    },
+    {
+      "type": "resource.requested",
+      "valid": false,
+      "error_reason": "missing_field_resource_id",
+      "payload": {
+        "requester_id": "sample_requester_id",
+        "scope": "sample_scope"
+      }
+    },
+    {
+      "type": "resource.granted",
+      "valid": false,
+      "error_reason": "missing_field_resource_id",
+      "payload": {
+        "lease_token": "sample_lease_token",
+        "expiry": "2026-09-18T12:00:00Z"
+      }
+    },
+    {
+      "type": "resource.denied",
+      "valid": false,
+      "error_reason": "missing_field_resource_id",
+      "payload": {
+        "reason": "sample_reason"
+      }
+    },
+    {
+      "type": "resource.released",
+      "valid": false,
+      "error_reason": "missing_field_resource_id",
+      "payload": {
+        "lease_token": "sample_lease_token"
+      }
+    },
+    {
+      "type": "resource.conflict",
+      "valid": false,
+      "error_reason": "missing_field_resource_id",
+      "payload": {
+        "queue_position": 1
+      }
+    },
+    {
+      "type": "rate.limited",
+      "valid": false,
+      "error_reason": "missing_field_requester_id",
+      "payload": {
+        "budget_type": "tokens",
+        "retry_after": 1
+      }
+    },
+    {
+      "type": "node.capability.granted",
+      "valid": false,
+      "error_reason": "missing_field_node_id",
+      "payload": {
+        "capability": "sample_capability",
+        "risk_tier": "low",
+        "expiry": "2026-09-18T12:00:00Z"
+      }
+    },
+    {
+      "type": "node.capability.revoked",
+      "valid": false,
+      "error_reason": "missing_field_node_id",
+      "payload": {
+        "capability": "sample_capability",
+        "revoked_by": "sample_revoked_by"
+      }
+    },
+    {
+      "type": "node.offline",
+      "valid": false,
+      "error_reason": "missing_field_node_id",
+      "payload": {
+        "last_heartbeat_at": "2026-09-18T12:00:00Z"
+      }
+    },
+    {
+      "type": "node.reconnected",
+      "valid": false,
+      "error_reason": "missing_field_node_id",
+      "payload": {
+        "lease_token": "sample_lease_token"
+      }
+    },
+    {
+      "type": "security.taint.detected",
+      "valid": false,
+      "error_reason": "missing_field_correlation_id",
+      "payload": {
+        "source_pulse_id": "sample_source_pulse_id",
+        "reason": "sample_reason"
+      }
+    },
+    {
+      "type": "security.taint.cleared",
+      "valid": false,
+      "error_reason": "missing_field_correlation_id",
+      "payload": {
+        "approver_id": "sample_approver_id",
+        "scope": "sample_scope",
+        "timestamp": "2026-09-18T12:00:00Z"
+      }
+    },
+    {
+      "type": "security.grant.approved",
+      "valid": false,
+      "error_reason": "missing_field_request_id",
+      "payload": {
+        "capability": "sample_capability",
+        "risk_tier": "low",
+        "approver_id": "sample_approver_id",
+        "expiry": "2026-09-18T12:00:00Z"
+      }
+    },
+    {
+      "type": "security.grant.denied",
+      "valid": false,
+      "error_reason": "missing_field_request_id",
+      "payload": {
+        "capability": "sample_capability",
+        "reason": "sample_reason"
+      }
+    },
+    {
+      "type": "knowledge.promotion.requested",
+      "valid": false,
+      "error_reason": "missing_field_knowledge_id",
+      "payload": {
+        "source_space_id": "sample_source_space_id",
+        "evidence_refs": [
+          "ref_1"
+        ]
+      }
+    },
+    {
+      "type": "knowledge.promotion.approved",
+      "valid": false,
+      "error_reason": "missing_field_knowledge_id",
+      "payload": {
+        "approver_id": "sample_approver_id",
+        "global_version": 1
+      }
+    },
+    {
+      "type": "knowledge.promotion.rejected",
+      "valid": false,
+      "error_reason": "missing_field_knowledge_id",
+      "payload": {
+        "approver_id": "sample_approver_id",
+        "reason": "sample_reason"
+      }
+    },
+    {
+      "type": "memory.updated",
+      "valid": false,
+      "error_reason": "missing_field_memory_id",
+      "payload": {
+        "scope": "task",
+        "version": 1
+      }
+    },
+    {
+      "type": "experience.stored",
+      "valid": false,
+      "error_reason": "missing_field_experience_id",
+      "payload": {
+        "situation": {
+          "key": "value"
+        },
+        "action": {
+          "key": "value"
+        },
+        "outcome": "sample_outcome",
+        "counterfactual": "sample_counterfactual",
+        "applicable_context": {
+          "key": "value"
+        },
+        "stored_at": "2026-09-18T12:00:00Z"
+      }
+    }
+  ]
+}

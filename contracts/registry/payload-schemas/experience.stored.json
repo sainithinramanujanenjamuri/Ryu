@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "experience.storedPayload",
+  "description": "Payload schema for Pulse type experience.stored",
+  "type": "object",
+  "properties": {
+    "experience_id": {
+      "type": "string"
+    },
+    "situation": {
+      "type": "object"
+    },
+    "action": {
+      "type": "object"
+    },
+    "outcome": {
+      "type": "string"
+    },
+    "counterfactual": {
+      "type": "string"
+    },
+    "applicable_context": {
+      "type": "object"
+    },
+    "stored_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "experience_id",
+    "situation",
+    "action",
+    "outcome",
+    "counterfactual",
+    "applicable_context",
+    "stored_at"
+  ],
+  "additionalProperties": false
+}

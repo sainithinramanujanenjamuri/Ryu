@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "worker.tool.failedPayload",
+  "description": "Payload schema for Pulse type worker.tool.failed",
+  "type": "object",
+  "properties": {
+    "error_class": {
+      "type": "string",
+      "pattern": "^(transient|terminal)\\..+"
+    },
+    "message": {
+      "type": "string"
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "attempt": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "error_class",
+    "message",
+    "retryable",
+    "attempt"
+  ],
+  "additionalProperties": false
+}

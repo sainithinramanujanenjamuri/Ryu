@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "space.archivedPayload",
+  "description": "Payload schema for Pulse type space.archived",
+  "type": "object",
+  "properties": {
+    "space_id": {
+      "type": "string"
+    },
+    "archive_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "space_id",
+    "archive_id"
+  ],
+  "additionalProperties": false
+}

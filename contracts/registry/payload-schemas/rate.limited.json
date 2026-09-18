@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "rate.limitedPayload",
+  "description": "Payload schema for Pulse type rate.limited",
+  "type": "object",
+  "properties": {
+    "requester_id": {
+      "type": "string"
+    },
+    "budget_type": {
+      "type": "string",
+      "enum": [
+        "tokens",
+        "tool_calls"
+      ]
+    },
+    "retry_after": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "requester_id",
+    "budget_type",
+    "retry_after"
+  ],
+  "additionalProperties": false
+}

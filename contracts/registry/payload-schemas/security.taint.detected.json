@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "security.taint.detectedPayload",
+  "description": "Payload schema for Pulse type security.taint.detected",
+  "type": "object",
+  "properties": {
+    "correlation_id": {
+      "type": "string"
+    },
+    "source_pulse_id": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "correlation_id",
+    "source_pulse_id",
+    "reason"
+  ],
+  "additionalProperties": false
+}

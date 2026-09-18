@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "task.retriedPayload",
+  "description": "Payload schema for Pulse type task.retried",
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "attempt": {
+      "type": "integer"
+    },
+    "error_class": {
+      "type": "string",
+      "pattern": "^transient\\..+"
+    }
+  },
+  "required": [
+    "task_id",
+    "attempt",
+    "error_class"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FailureTaxonomy",
+  "description": "Central failure taxonomy mapping error classes to retryability and deterministic escalation paths.",
+  "version": "1.0.0",
+  "classes": {
+    "transient": {
+      "retryable": true,
+      "categories": [
+        {
+          "class": "transient.timeout",
+          "description": "Tool or network call exceeded timeout threshold.",
+          "retryable": true,
+          "escalation": "Worker retries locally first up to bounded attempt limit with original idempotency_key."
+        },
+        {
+          "class": "transient.rate_limit",
+          "description": "Provider returned 429 / rate limited backpressure.",
+          "retryable": true,
+          "escalation": "Worker retries locally with exponential backoff."
+        },
+        {
+          "class": "transient.network",
+          "description": "Connection reset or network drop mid-call.",
+          "retryable": true,
+          "escalation": "Worker retries locally."
+        }
+      ]
+    },
+    "terminal": {
+      "retryable": false,
+      "categories": [
+        {
+          "class": "terminal.invalid_params",
+          "description": "Malformed CapabilityRequest or parameter schema violation.",
+          "retryable": false,
+          "escalation": "Immediate escalation to Agent; do not resend invalid request."
+        },
+        {
+          "class": "terminal.permission_denied",
+          "description": "Grant missing, expired, revoked, or security authorization denied.",
+          "retryable": false,
+          "escalation": "Immediate escalation to Human via Pulse."
+        },
+        {
+          "class": "terminal.budget_exceeded",
+          "description": "Denied at Space Kernel Admission Control before dispatch.",
+          "retryable": false,
+          "escalation": "Immediate escalation to Human; no dispatch attempted."
+        },
+        {
+          "class": "terminal.not_found",
+          "description": "Requested capability, resource, node, or artifact does not exist.",
+          "retryable": false,
+          "escalation": "Escalate to Agent or Orchestrator for replan."
+        }
+      ]
+    }
+  }
+}
+

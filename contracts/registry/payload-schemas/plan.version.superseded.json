@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "plan.version.supersededPayload",
+  "description": "Payload schema for Pulse type plan.version.superseded",
+  "type": "object",
+  "properties": {
+    "superseded_version": {
+      "type": "integer"
+    },
+    "current_version": {
+      "type": "integer"
+    },
+    "winning_delta_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "superseded_version",
+    "current_version",
+    "winning_delta_id"
+  ],
+  "additionalProperties": false
+}

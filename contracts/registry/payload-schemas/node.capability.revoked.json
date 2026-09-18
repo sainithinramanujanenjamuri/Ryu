@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "node.capability.revokedPayload",
+  "description": "Payload schema for Pulse type node.capability.revoked",
+  "type": "object",
+  "properties": {
+    "node_id": {
+      "type": "string"
+    },
+    "capability": {
+      "type": "string"
+    },
+    "revoked_by": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "node_id",
+    "capability",
+    "revoked_by"
+  ],
+  "additionalProperties": false
+}

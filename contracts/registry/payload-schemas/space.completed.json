@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "space.completedPayload",
+  "description": "Payload schema for Pulse type space.completed",
+  "type": "object",
+  "properties": {
+    "space_id": {
+      "type": "string"
+    },
+    "outcome": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "space_id",
+    "outcome"
+  ],
+  "additionalProperties": false
+}

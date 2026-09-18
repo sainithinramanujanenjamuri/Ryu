@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "plan.createdPayload",
+  "description": "Payload schema for Pulse type plan.created",
+  "type": "object",
+  "properties": {
+    "plan_version": {
+      "type": "integer"
+    },
+    "task_count": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "plan_version",
+    "task_count"
+  ],
+  "additionalProperties": false
+}

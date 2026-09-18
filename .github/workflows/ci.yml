@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+
+jobs:
+  lint:
+    name: Lint (ruff + dep-guard)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Ruff check
+        run: ruff check .
+      - name: Dependency boundary guard
+        run: python scripts/dep_guard.py
+
+  test:
+    name: Pulse Bus Tests (Python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install pytest jsonschema
+      - name: Run unit tests
+        run: pytest core/pulse_bus/tests -v
+      - name: Run harness cases
+        run: pytest harness/cases -v
+
+  rust:
+    name: Rust Workspace (cargo check + clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: cargo check
+        run: cargo check --manifest-path node_runtime/Cargo.toml
+      - name: cargo clippy
+        run: cargo clippy --manifest-path node_runtime/Cargo.toml
+      - name: cargo fmt check
+        run: cargo fmt --manifest-path node_runtime/Cargo.toml --all -- --check
+

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "space.createdPayload",
+  "description": "Payload schema for Pulse type space.created",
+  "type": "object",
+  "properties": {
+    "space_id": {
+      "type": "string"
+    },
+    "owner_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "space_id",
+    "owner_id"
+  ],
+  "additionalProperties": false
+}
