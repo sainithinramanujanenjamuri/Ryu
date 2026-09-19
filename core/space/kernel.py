@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import threading
 from datetime import datetime, timezone
-from typing import Protocol
+from typing import Any, Protocol
 
 from ryu.pulse_bus.pulse import Pulse, Severity
 
@@ -23,7 +23,7 @@ from core.capabilities.admission import (
 from core.capabilities.windows import EscalationWindowManager
 from core.plans.delta import PlanDelta
 from core.plans.plan_store import PlanStore
-from core.plans.task_graph import TaskGraph
+from core.plans.task_graph import TaskGraph, TaskNode
 from core.security.secrets import SecretStore
 from core.space.approver import ApprovalManager, ApprovalRequest, TimeoutClass
 from core.space.attention import AttentionBudget
@@ -190,3 +190,74 @@ class SpaceKernel:
         if res:
             self.attention.complete_approval(self.space_id, request_id)
         return res
+
+    def create_checkpoint(self, checkpoint_id: str | None = None) -> dict[str, Any]:
+        """Create a serializable checkpoint of authoritative Space state (KERNEL-006)."""
+        now_str = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        cid = checkpoint_id or f"chk-{self.space_id}-{now_str}"
+        with self._lock:
+            graph = self.get_task_graph()
+            nodes_data = [
+                {
+                    "id": n.id,
+                    "capability": n.capability,
+                    "params": dict(n.params),
+                    "optional": n.optional,
+                    "state": n.state,
+                }
+                for n in graph.nodes
+            ]
+            checkpoint = {
+                "checkpoint_id": cid,
+                "space_id": self.space_id,
+                "owner_id": self.owner_id,
+                "plan_version": self.get_plan_version(),
+                "nodes": nodes_data,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            return checkpoint
+
+    def restore_checkpoint(self, checkpoint_data: dict[str, Any]) -> None:
+        """Restore authoritative Space state from a checkpoint and emit space.restored."""
+        incoming_space = checkpoint_data.get("space_id", "")
+        self.verify_space_identity(incoming_space)
+
+        cid = checkpoint_data.get("checkpoint_id", "chk-unknown")
+        with self._lock:
+            nodes = [
+                TaskNode(
+                    id=nd["id"],
+                    capability=nd["capability"],
+                    params=dict(nd.get("params", {})),
+                    optional=bool(nd.get("optional", False)),
+                    state=nd.get("state", "pending"),
+                )
+                for nd in checkpoint_data.get("nodes", [])
+            ]
+            pver = int(checkpoint_data.get("plan_version", 1))
+
+            graph = TaskGraph(
+                space_id=self.space_id,
+                plan_version=pver,
+                nodes=nodes,
+            )
+            self.plan_store._graphs[self.space_id] = graph
+            self.plan_store._last_winning_delta[self.space_id] = cid
+
+            if self.bus is not None:
+                self.bus.publish(
+                    Pulse(
+                        id=f"space-restored-{self.space_id}-{cid}",
+                        space_id=self.space_id,
+                        type="space.restored",
+                        severity=Severity.INFO,
+                        source="space_kernel",
+                        timestamp=datetime.now(timezone.utc),
+                        payload={
+                            "space_id": self.space_id,
+                            "checkpoint_id": cid,
+                        },
+                        taint=False,
+                        correlation_id=f"corr-restore-{self.space_id}",
+                    )
+                )

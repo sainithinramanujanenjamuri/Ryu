@@ -36,4 +36,29 @@ def test_kernel_agent_execution_supervision() -> None:
 
 
 def test_kernel_checkpoint_restore() -> None:
-    pytest.skip("spec §4, KERNEL-006 — Phase 4: Checkpoint restoration not implemented.")
+    """KERNEL-006: Checkpoint creation and restoration."""
+    from ryu.pulse_bus.bus import PulseBus
+
+    from core.plans.task_graph import TaskNode
+    from core.space.kernel import SpaceKernel
+
+    bus = PulseBus()
+    kernel = SpaceKernel(space_id="space-chk", owner_id="user-1", bus=bus)
+    graph = kernel.get_task_graph()
+    graph.nodes.append(TaskNode(id="task-1", capability="compute.cpu", params={"units": 2}))
+
+    # Create checkpoint
+    checkpoint = kernel.create_checkpoint(checkpoint_id="chk-001")
+    assert checkpoint["checkpoint_id"] == "chk-001"
+    assert checkpoint["plan_version"] == 1
+    assert len(checkpoint["nodes"]) == 1
+
+    # Simulate restore in new kernel instance
+    restored_kernel = SpaceKernel(space_id="space-chk", owner_id="user-1", bus=bus)
+    restored_kernel.restore_checkpoint(checkpoint)
+
+    assert restored_kernel.get_plan_version() == 1
+    restored_nodes = restored_kernel.get_task_graph().nodes
+    assert len(restored_nodes) == 1
+    assert restored_nodes[0].id == "task-1"
+    assert restored_nodes[0].capability == "compute.cpu"

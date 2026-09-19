@@ -87,9 +87,9 @@ The following rules apply to every contract.
 | ARC-002 | Capabilities are requested, never owned.                        | Architecture §4 / Law 2          | Admission Control / CapabilityRequest | `test_kernel_admission.py`           | Phase 2     | `GATE_VERIFIED` |
 | ARC-003 | Components communicate through Pulses.                          | Architecture / Law 3             | Pulse Bus                             | Pulse contract suite                     | Phase 1     | `SPECIFIED` |
 | ARC-004 | Knowledge belongs to the Space first.                           | Architecture §4 / Law 4          | Space Memory / Promotion pipeline     | Knowledge promotion tests                | Phase 10    | `SPECIFIED` |
-| ARC-005 | Humans define goals; RYU organizes execution.                   | Architecture / Law 5             | Orchestrator / Human Channel          | Full-loop tests                          | Phase 4 / 8 | `SPECIFIED` |
+| ARC-005 | Humans define goals; RYU organizes execution.                   | Architecture / Law 5             | Orchestrator / Human Channel          | Full-loop tests                          | Phase 4 / 8 | `GATE_VERIFIED` |
 | ARC-006 | Failures are contained and escalated, never silently swallowed. | Architecture / Law 6             | All runtime boundaries                | Failure taxonomy / chaos suite           | Phase 3+    | `SPECIFIED` |
-| ARC-007 | Deterministic core has no dependency on LLM-bearing layers.     | Architecture / dependency rules  | `core/`                               | Dependency guard + core-independence job | Phase 0 / 4 | `SPECIFIED` |
+| ARC-007 | Deterministic core has no dependency on LLM-bearing layers.     | Architecture / dependency rules  | `core/`                               | Dependency guard + core-independence job | Phase 0 / 4 | `GATE_VERIFIED` |
 | ARC-008 | Architecture document is frozen except through ADR process.     | Architecture changelog           | `docs/architecture.md`, `adr/`        | ADR review evidence                      | All         | `SPECIFIED` |
 | ARC-009 | Replay is a first-class debugging capability.                   | Architecture / Roadmap principle | Pulse Store / LLM Recorder / Replay   | Replay suite                             | Phase 1+    | `SPECIFIED` |
 | ARC-010 | No silent failure, denial, timeout, or backpressure path.       | Architecture / Law 6             | Runtime-wide                          | Failure/backpressure harness             | Phase 3+    | `SPECIFIED` |
@@ -102,7 +102,7 @@ The following rules apply to every contract.
 | --------- | ---------------------------- | ------------------------------------------------------------------------------------ | ----------------------- | --------------------------- | ------------ | ----------- |
 | SPACE-001 | Space isolation              | Space A cannot access Space B's memory without an authorized promotion path.         | Space Kernel / Memory   | `test_space_isolation.py`               | Phase 2 / 10 | `GATE_VERIFIED`        |
 | SPACE-002 | Space resource isolation     | Resource grants are scoped to the owning Space.                                      | Resource Manager        | `test_space_future.py` (`test_space_resource_isolation`) | Phase 3 / 7  | `GATE_VERIFIED`        |
-| SPACE-003 | Space agent isolation        | Agent state/subscriptions cannot cross Space boundary without defined authorization. | Space / Agent boundary  | Isolation suite                         | Phase 2 / 4  | `SPECIFIED`            |
+| SPACE-003 | Space agent isolation        | Agent state/subscriptions cannot cross Space boundary without defined authorization. | Space / Agent boundary  | Isolation suite                         | Phase 2 / 4  | `GATE_VERIFIED`        |
 | SPACE-004 | Space artifact isolation     | Artifacts remain scoped to their Space unless explicitly promoted/exported.          | Artifact / Memory layer | Isolation suite                         | Phase 2+     | `SPECIFIED`            |
 | SPACE-005 | Space subscription isolation | Pulse subscriptions cannot observe another Space without authorization.              | Pulse Bus               | `test_misc.py` (`test_space_scoped_retrieval`) | Phase 1 / 2  | `INTEGRATION_VERIFIED` |
 | SPACE-006 | Space identity               | Every execution has an unambiguous Space identity.                                   | Space Kernel            | `test_space_isolation.py`, `test_kernel.py` | Phase 2      | `GATE_VERIFIED`        |
@@ -254,13 +254,13 @@ Contract consumers must not create conflicting local definitions.
 
 | ID       | Contract              | Required Invariant                                                | Implementation             | Harness               | Roadmap | Status      |
 | -------- | --------------------- | ----------------------------------------------------------------- | -------------------------- | --------------------- | ------- | ----------- |
-| ORCH-001 | Thin coordinator      | Orchestrator owns sequencing, not policy/business logic.          | `orchestrator.py`          | Full-loop suite       | Phase 4 | `SPECIFIED` |
-| ORCH-002 | Goal Analyzer         | Command becomes a Goal Spec.                                      | `goal_analyzer.py`         | Goal test             | Phase 4 | `SPECIFIED` |
-| ORCH-003 | Planner               | Goal Spec becomes TaskGraph.                                      | `planner.py`               | Planning test         | Phase 4 | `SPECIFIED` |
-| ORCH-004 | Team Builder          | TaskGraph becomes assignments.                                    | `team_builder.py`          | Assignment test       | Phase 4 | `SPECIFIED` |
-| ORCH-005 | Reconciliation        | Desired vs actual state produces policy-defined recovery actions. | `reconciler.py`            | Recovery test         | Phase 4 | `SPECIFIED` |
-| ORCH-006 | Zero-LLM control loop | Full deterministic loop works without an LLM.                     | Orchestrator + mock agents | Full-loop harness     | Phase 4 | `SPECIFIED` |
-| ORCH-007 | Core independence     | Deterministic core operates with `agents/` removed.               | CI architecture            | Core-independence job | Phase 4 | `SPECIFIED` |
+| ORCH-001 | Thin coordinator      | Orchestrator owns sequencing, not policy/business logic.          | `orchestrator.py`          | Full-loop suite       | Phase 4 | `GATE_VERIFIED` |
+| ORCH-002 | Goal Analyzer         | Command becomes a Goal Spec.                                      | `goal_analyzer.py`         | Goal test             | Phase 4 | `GATE_VERIFIED` |
+| ORCH-003 | Planner               | Goal Spec becomes TaskGraph.                                      | `planner.py`               | Planning test         | Phase 4 | `GATE_VERIFIED` |
+| ORCH-004 | Team Builder          | TaskGraph becomes assignments.                                    | `team_builder.py`          | Assignment test       | Phase 4 | `GATE_VERIFIED` |
+| ORCH-005 | Reconciliation        | Desired vs actual state produces policy-defined recovery actions. | `reconciler.py`            | Recovery test         | Phase 4 | `GATE_VERIFIED` |
+| ORCH-006 | Zero-LLM control loop | Full deterministic loop works without an LLM.                     | Orchestrator + mock agents | Full-loop harness     | Phase 4 | `GATE_VERIFIED` |
+| ORCH-007 | Core independence     | Deterministic core operates with `agents/` removed.               | CI architecture            | Core-independence job | Phase 4 | `GATE_VERIFIED` |
 
 ---
 
@@ -490,7 +490,7 @@ They identify areas that require explicit architectural resolution before implem
 | OPEN-005 | Exact budget accounting semantics: reservation, actual cost, streaming, reconciliation | Phase 2         | Architecture §4 / admission.py |
 | OPEN-006 | Exact taint clearance scope semantics                                                  | Phase 1 / 2     | taint.py / Architecture §10 |
 | OPEN-007 | Secret sanitization boundary for LLM recording                                         | Phase 5         |
-| OPEN-008 | Exact Reconciler responsibility relative to Monitor and Adapter/Reflector              | Phase 4         |
+| OPEN-008 | Exact Reconciler responsibility relative to Monitor and Adapter/Reflector              | Phase 4         | Resolved: ADR-0008 |
 | OPEN-009 | Recovery semantics for approval state                                                  | Phase 2         | approver.py |
 | OPEN-010 | Resource queue fairness/starvation policy                                              | Phase 3         | Resolved: ADR-0005 |
 

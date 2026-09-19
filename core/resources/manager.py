@@ -66,9 +66,15 @@ class ResourceManager:
                 )
             self.store.save_resource(resource)
 
-    def get_resource(self, identity: ResourceIdentity) -> Resource | None:
+    def get_resource(self, identity: ResourceIdentity | str) -> Resource | None:
         with self._lock:
-            return self._resources.get(identity.to_handle())
+            handle = identity if isinstance(identity, str) else identity.to_handle()
+            return self._resources.get(handle)
+
+    def get_lease(self, lease_token: str) -> Lease | None:
+        """Retrieve a lease by its token."""
+        with self._lock:
+            return self._lease_manager.get_lease(lease_token)
 
     def list_resources(self, space_id: str | None = None) -> list[Resource]:
         with self._lock:

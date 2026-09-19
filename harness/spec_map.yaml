@@ -296,3 +296,61 @@ spec_map:
     roadmap_phase: 3
     evidence_state: "IMPLEMENTED"
 
+  # -----------------------------------------------------------------------
+  # Phase 4 — Space Orchestrator & Plan Reconciliation
+  # -----------------------------------------------------------------------
+
+  - id: ORCH-001
+    title: "Goal to executable plan without execution authority"
+    harness_case: "harness/cases/orchestrator/test_orchestrator_future.py"
+    roadmap_phase: 4
+    evidence_state: "IMPLEMENTED"
+
+  - id: ORCH-002
+    title: "Degraded mode with unavailable nodes"
+    harness_case: "harness/cases/orchestrator/test_orchestrator_future.py"
+    roadmap_phase: 4
+    evidence_state: "IMPLEMENTED"
+
+  - id: ORCH-003
+    title: "Goal Analyzer parses without tool execution"
+    harness_case: "harness/cases/orchestrator/test_orchestrator_future.py"
+    roadmap_phase: 4
+    evidence_state: "IMPLEMENTED"
+
+  - id: ORCH-004
+    title: "Team Builder converts TaskGraph into task assignments"
+    harness_case: "harness/cases/orchestrator/test_orchestrator_future.py"
+    roadmap_phase: 4
+    evidence_state: "IMPLEMENTED"
+
+  - id: ORCH-005
+    title: "Orchestrator submits PlanDelta on task failure"
+    harness_case: "harness/cases/orchestrator/test_orchestrator_future.py"
+    roadmap_phase: 4
+    evidence_state: "IMPLEMENTED"
+
+  - id: ORCH-006
+    title: "Reconciler retries transient failures within budget"
+    harness_case: "harness/cases/orchestrator/test_orchestrator_future.py"
+    roadmap_phase: 4
+    evidence_state: "IMPLEMENTED"
+
+  - id: ORCH-007
+    title: "Core independence proof (core/orchestrator imports zero modules from agents/, workers/, skills/, workflows/)"
+    harness_case: "harness/cases/orchestrator/test_orchestrator_future.py"
+    roadmap_phase: 4
+    evidence_state: "IMPLEMENTED"
+
+  - id: SPACE-003
+    title: "Space Agent Isolation"
+    harness_case: "harness/cases/space/test_space_future.py"
+    roadmap_phase: 4
+    evidence_state: "IMPLEMENTED"
+
+  - id: KERNEL-006
+    title: "Space Checkpoint and Restore"
+    harness_case: "harness/cases/kernel/test_kernel_future.py"
+    roadmap_phase: 4
+    evidence_state: "IMPLEMENTED"
+

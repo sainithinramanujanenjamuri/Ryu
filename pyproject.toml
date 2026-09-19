@@ -24,6 +24,7 @@ testpaths = [
     "core/security/tests",
     "core/space/tests",
     "core/resources/tests",
+    "core/orchestrator/tests",
     "harness/cases",
     "harness/cases/pulse_bus_integration",
 ]
