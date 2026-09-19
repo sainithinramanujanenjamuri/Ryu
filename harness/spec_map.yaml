@@ -208,3 +208,91 @@ spec_map:
     roadmap_phase: 1
     evidence_state: "IMPLEMENTED"
 
+  # -----------------------------------------------------------------------
+  # Phase 3 — Resource Manager & Chaos Harness v1
+  # -----------------------------------------------------------------------
+
+  - id: RESOURCE-001
+    title: "Resource identity (resource_type, provider_id, instance_id)"
+    harness_case: "harness/cases/resources/test_resources_future.py"
+    roadmap_phase: 3
+    evidence_state: "IMPLEMENTED"
+
+  - id: RESOURCE-002
+    title: "Resource ownership represented by Lease"
+    harness_case: "harness/cases/resources/test_resources_future.py"
+    roadmap_phase: 3
+    evidence_state: "IMPLEMENTED"
+
+  - id: RESOURCE-005
+    title: "Contention: no double-grant under concurrent acquisition"
+    harness_case: "harness/cases/resources/test_lease_race.py"
+    roadmap_phase: 3
+    evidence_state: "IMPLEMENTED"
+
+  - id: RESOURCE-006
+    title: "Accurate queue position in resource.conflict"
+    harness_case: "harness/cases/resources/test_resources_future.py"
+    roadmap_phase: 3
+    evidence_state: "IMPLEMENTED"
+
+  - id: SPACE-002
+    title: "Space resource isolation"
+    harness_case: "harness/cases/space/test_space_future.py"
+    roadmap_phase: 3
+    evidence_state: "IMPLEMENTED"
+
+  - id: FAIL-001
+    title: "Transient timeout retry policy"
+    harness_case: "harness/cases/resources/test_fault_matrix.py"
+    roadmap_phase: 3
+    evidence_state: "IMPLEMENTED"
+
+  - id: FAIL-002
+    title: "Transient rate limit retry"
+    harness_case: "harness/cases/resources/test_fault_matrix.py"
+    roadmap_phase: 3
+    evidence_state: "IMPLEMENTED"
+
+  - id: FAIL-003
+    title: "Transient network retry"
+    harness_case: "harness/cases/resources/test_fault_matrix.py"
+    roadmap_phase: 3
+    evidence_state: "IMPLEMENTED"
+
+  - id: FAIL-004
+    title: "Terminal invalid params escalation"
+    harness_case: "harness/cases/resources/test_fault_matrix.py"
+    roadmap_phase: 3
+    evidence_state: "IMPLEMENTED"
+
+  - id: FAIL-005
+    title: "Terminal permission denied escalation"
+    harness_case: "harness/cases/resources/test_fault_matrix.py"
+    roadmap_phase: 3
+    evidence_state: "IMPLEMENTED"
+
+  - id: FAIL-007
+    title: "Terminal not found replan"
+    harness_case: "harness/cases/resources/test_fault_matrix.py"
+    roadmap_phase: 3
+    evidence_state: "IMPLEMENTED"
+
+  - id: IDEM-001
+    title: "Stable idempotency key reuse"
+    harness_case: "harness/cases/resources/test_idempotency_proof.py"
+    roadmap_phase: 3
+    evidence_state: "IMPLEMENTED"
+
+  - id: IDEM-002
+    title: "Side-effect uniqueness"
+    harness_case: "harness/cases/resources/test_idempotency_proof.py"
+    roadmap_phase: 3
+    evidence_state: "IMPLEMENTED"
+
+  - id: IDEM-003
+    title: "Cached response on retry"
+    harness_case: "harness/cases/resources/test_idempotency_proof.py"
+    roadmap_phase: 3
+    evidence_state: "IMPLEMENTED"
+

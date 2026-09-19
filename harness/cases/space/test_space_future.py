@@ -9,7 +9,20 @@ import pytest
 
 
 def test_space_resource_isolation() -> None:
-    pytest.skip("spec §4, SPACE-002 — Phase 3: Resource Manager not implemented.")
+    """SPACE-002: Resource grants are scoped to the owning Space."""
+    from ryu.pulse_bus.bus import PulseBus
+
+    from core.resources.identity import Resource, ResourceIdentity
+    from core.resources.manager import ResourceManager
+
+    bus = PulseBus()
+    mgr = ResourceManager(bus=bus)
+    res_id = ResourceIdentity("gpu", "local", "cuda-0")
+    mgr.register_resource(Resource(identity=res_id, space_id="space-A", total_capacity=1))
+
+    # Space B attempting to acquire resource in Space A is rejected
+    with pytest.raises(PermissionError, match="Cross-space resource access rejected"):
+        mgr.acquire("space-B", "agent-b", res_id)
 
 
 def test_space_agent_isolation() -> None:

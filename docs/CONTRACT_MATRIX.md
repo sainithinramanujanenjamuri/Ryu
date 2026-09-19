@@ -101,7 +101,7 @@ The following rules apply to every contract.
 | ID        | Contract                     | Required Invariant                                                                   | Implementation          | Harness                     | Roadmap      | Status      |
 | --------- | ---------------------------- | ------------------------------------------------------------------------------------ | ----------------------- | --------------------------- | ------------ | ----------- |
 | SPACE-001 | Space isolation              | Space A cannot access Space B's memory without an authorized promotion path.         | Space Kernel / Memory   | `test_space_isolation.py`               | Phase 2 / 10 | `GATE_VERIFIED`        |
-| SPACE-002 | Space resource isolation     | Resource grants are scoped to the owning Space.                                      | Resource Manager        | Cross-Space grant test                  | Phase 3 / 7  | `SPECIFIED`            |
+| SPACE-002 | Space resource isolation     | Resource grants are scoped to the owning Space.                                      | Resource Manager        | `test_space_future.py` (`test_space_resource_isolation`) | Phase 3 / 7  | `GATE_VERIFIED`        |
 | SPACE-003 | Space agent isolation        | Agent state/subscriptions cannot cross Space boundary without defined authorization. | Space / Agent boundary  | Isolation suite                         | Phase 2 / 4  | `SPECIFIED`            |
 | SPACE-004 | Space artifact isolation     | Artifacts remain scoped to their Space unless explicitly promoted/exported.          | Artifact / Memory layer | Isolation suite                         | Phase 2+     | `SPECIFIED`            |
 | SPACE-005 | Space subscription isolation | Pulse subscriptions cannot observe another Space without authorization.              | Pulse Bus               | `test_misc.py` (`test_space_scoped_retrieval`) | Phase 1 / 2  | `INTEGRATION_VERIFIED` |
@@ -186,42 +186,42 @@ Contract consumers must not create conflicting local definitions.
 
 | ID       | Contract          | Required Invariant                                                    | Implementation             | Harness                 | Roadmap     | Status      |
 | -------- | ----------------- | --------------------------------------------------------------------- | -------------------------- | ----------------------- | ----------- | ----------- |
-| FAIL-001 | Timeout           | `transient.timeout` follows retry policy.                             | Runtime / Worker           | Fault matrix            | Phase 3     | `SPECIFIED` |
-| FAIL-002 | Rate limit        | `transient.rate_limit` is distinct from `rate.limited` backpressure.  | Runtime / Resource Manager | Fault matrix            | Phase 3     | `SPECIFIED` |
-| FAIL-003 | Network           | `transient.network` follows retry policy.                             | Runtime                    | Fault matrix            | Phase 3     | `SPECIFIED` |
-| FAIL-004 | Invalid params    | `terminal.invalid_params` does not retry.                             | Runtime                    | Fault matrix            | Phase 3     | `SPECIFIED` |
-| FAIL-005 | Permission denied | `terminal.permission_denied` escalates immediately.                   | Admission / Worker         | Escalation test         | Phase 3 / 4 | `SPECIFIED` |
-| FAIL-006 | Budget exceeded   | `terminal.budget_exceeded` follows admission policy.                  | Kernel                     | Budget suite            | Phase 2     | `SPECIFIED` |
-| FAIL-007 | Not found         | `terminal.not_found` follows terminal handling.                       | Runtime                    | Fault matrix            | Phase 3     | `SPECIFIED` |
+| FAIL-001 | Timeout           | `transient.timeout` follows retry policy.                             | Runtime / Worker           | `test_fault_matrix.py`  | Phase 3     | `GATE_VERIFIED` |
+| FAIL-002 | Rate limit        | `transient.rate_limit` is distinct from `rate.limited` backpressure.  | Runtime / Resource Manager | `test_fault_matrix.py`  | Phase 3     | `GATE_VERIFIED` |
+| FAIL-003 | Network           | `transient.network` follows retry policy.                             | Runtime                    | `test_fault_matrix.py`  | Phase 3     | `GATE_VERIFIED` |
+| FAIL-004 | Invalid params    | `terminal.invalid_params` does not retry.                             | Runtime                    | `test_fault_matrix.py`  | Phase 3     | `GATE_VERIFIED` |
+| FAIL-005 | Permission denied | `terminal.permission_denied` escalates immediately.                   | Admission / Worker         | `test_fault_matrix.py`  | Phase 3 / 4 | `GATE_VERIFIED` |
+| FAIL-006 | Budget exceeded   | `terminal.budget_exceeded` follows admission policy.                  | Kernel                     | `test_fault_matrix.py`, `test_admission.py` | Phase 2 | `GATE_VERIFIED` |
+| FAIL-007 | Not found         | `terminal.not_found` follows terminal handling.                       | Runtime                    | `test_fault_matrix.py`  | Phase 3     | `GATE_VERIFIED` |
 | FAIL-008 | No silent failure | Every failure is surfaced through a typed Pulse or recorded decision. | Runtime-wide               | Failure injection suite | Phase 3+    | `SPECIFIED` |
 
 ---
 
 # 12. Idempotency Contracts
 
-| ID       | Contract               | Required Invariant                                                                               | Implementation Boundary     | Harness         | Roadmap  | Status      |
-| -------- | ---------------------- | ------------------------------------------------------------------------------------------------ | --------------------------- | --------------- | -------- | ----------- |
-| IDEM-001 | Stable idempotency key | Retries reuse the same key.                                                                      | Execution layer             | Retry test      | Phase 3  | `SPECIFIED` |
-| IDEM-002 | Side-effect uniqueness | A retried side-effecting operation executes once.                                                | Provider/execution boundary | Payment fixture | Phase 3  | `SPECIFIED` |
-| IDEM-003 | Cached response        | Subsequent retries may return stored response without repeating side effect.                     | Provider adapter            | Payment fixture | Phase 3  | `SPECIFIED` |
-| IDEM-004 | Crash recovery         | Process failure after side effect but before response persistence does not duplicate the effect. | Runtime / provider boundary | Crash injection | Phase 3+ | `SPECIFIED` |
+| ID       | Contract               | Required Invariant                                                                               | Implementation Boundary     | Harness                   | Roadmap  | Status          |
+| -------- | ---------------------- | ------------------------------------------------------------------------------------------------ | --------------------------- | ------------------------- | -------- | --------------- |
+| IDEM-001 | Stable idempotency key | Retries reuse the same key.                                                                      | Execution layer             | `test_idempotency_proof.py` | Phase 3  | `GATE_VERIFIED` |
+| IDEM-002 | Side-effect uniqueness | A retried side-effecting operation executes once.                                                | Provider/execution boundary | `test_idempotency_proof.py` | Phase 3  | `GATE_VERIFIED` |
+| IDEM-003 | Cached response        | Subsequent retries may return stored response without repeating side effect.                     | Provider adapter            | `test_idempotency_proof.py` | Phase 3  | `GATE_VERIFIED` |
+| IDEM-004 | Crash recovery         | Process failure after side effect but before response persistence does not duplicate the effect. | Runtime / provider boundary | Crash injection           | Phase 3+ | `SPECIFIED`     |
 
-**Open architectural contract:** the authoritative owner of the idempotency guarantee must be explicitly defined before implementation of the production side-effect path.
+**Open architectural contract:** Resolved by ADR-0006: the boundary component executing the side effect owns the idempotency guarantee.
 
 ---
 
 # 13. Resource Manager Contracts
 
-| ID           | Contract              | Required Invariant                                                 | Implementation   | Harness              | Roadmap     | Status      |
-| ------------ | --------------------- | ------------------------------------------------------------------ | ---------------- | -------------------- | ----------- | ----------- |
-| RESOURCE-001 | Resource identity     | Resource identity is `(resource_type, provider_id, instance_id)`.  | `identity.py`    | Identity tests       | Phase 3     | `SPECIFIED` |
-| RESOURCE-002 | Lease                 | Resource ownership is represented by a Manager-issued lease.       | `lease.py`       | Lease tests          | Phase 3     | `SPECIFIED` |
-| RESOURCE-003 | Expiry                | Expired leases cannot continue valid ownership.                    | Lease Manager    | Expiry test          | Phase 3     | `SPECIFIED` |
-| RESOURCE-004 | Revocation            | Revoked leases cannot be used.                                     | Lease Manager    | Revocation test      | Phase 3 / 7 | `SPECIFIED` |
-| RESOURCE-005 | Contention            | Concurrent acquisition cannot double-grant one exclusive resource. | Resource Manager | `test_lease_race.py` | Phase 3     | `SPECIFIED` |
-| RESOURCE-006 | Queue position        | Losing requests receive accurate `resource.conflict`.              | Queue            | Conflict test        | Phase 3     | `SPECIFIED` |
-| RESOURCE-007 | Rate limiting         | Over-limit requests are queued and emit `rate.limited`.            | Rate limiter     | Rate-limit test      | Phase 3     | `SPECIFIED` |
-| RESOURCE-008 | Backpressure severity | `rate.limited` remains `info`.                                     | Registry         | Contract test        | Phase 0+    | `SPECIFIED` |
+| ID           | Contract              | Required Invariant                                                 | Implementation   | Harness                                   | Roadmap     | Status          |
+| ------------ | --------------------- | ------------------------------------------------------------------ | ---------------- | ----------------------------------------- | ----------- | --------------- |
+| RESOURCE-001 | Resource identity     | Resource identity is `(resource_type, provider_id, instance_id)`.  | `identity.py`    | `test_resources_future.py`, `test_identity.py` | Phase 3     | `GATE_VERIFIED` |
+| RESOURCE-002 | Lease                 | Resource ownership is represented by a Manager-issued lease.       | `lease.py`       | `test_resources_future.py`, `test_lease.py`    | Phase 3     | `GATE_VERIFIED` |
+| RESOURCE-003 | Expiry                | Expired leases cannot continue valid ownership.                    | Lease Manager    | `test_lease.py`, `test_chaos_scenarios.py`| Phase 3     | `GATE_VERIFIED` |
+| RESOURCE-004 | Revocation            | Revoked leases cannot be used.                                     | Lease Manager    | `test_lease.py`, `test_manager.py`        | Phase 3 / 7 | `GATE_VERIFIED` |
+| RESOURCE-005 | Contention            | Concurrent acquisition cannot double-grant one exclusive resource. | Resource Manager | `test_lease_race.py`                      | Phase 3     | `GATE_VERIFIED` |
+| RESOURCE-006 | Queue position        | Losing requests receive accurate `resource.conflict`.              | Queue            | `test_resources_future.py`, `test_lease_race.py` | Phase 3 | `GATE_VERIFIED` |
+| RESOURCE-007 | Rate limiting         | Over-limit requests are queued and emit `rate.limited`.            | Rate limiter     | `test_rate_limit.py`                      | Phase 3     | `GATE_VERIFIED` |
+| RESOURCE-008 | Backpressure severity | `rate.limited` remains `info`.                                     | Registry         | `test_resources_future.py`                 | Phase 0+    | `GATE_VERIFIED` |
 
 ---
 
@@ -341,7 +341,7 @@ These contracts are mandatory architectural verification areas because distribut
 | REC-002 | Pulse/state consistency | State mutations and corresponding Pulses have defined atomicity or reconciliation semantics. | Runtime / Pulse Store | Crash consistency test | Phase 1+    | `SPECIFIED` |
 | REC-003 | Plan recovery           | Authoritative plan version survives restart.                                                 | Plan Store            | Plan recovery          | Phase 2     | `SPECIFIED` |
 | REC-004 | Budget recovery         | Budget window state remains authoritative after restart.                                     | Admission / Windows   | Budget recovery        | Phase 2     | `SPECIFIED` |
-| REC-005 | Lease recovery          | Lease ownership and expiry recover deterministically.                                        | Resource Manager      | Lease recovery         | Phase 3     | `SPECIFIED` |
+| REC-005 | Lease recovery          | Lease ownership and expiry recover deterministically.                                        | Resource Manager      | `test_manager.py`, `test_chaos_scenarios.py` | Phase 3     | `GATE_VERIFIED` |
 | REC-006 | Approval recovery       | Pending approvals have defined restart semantics.                                            | Approver              | Approval recovery      | Phase 2 / 8 | `SPECIFIED` |
 | REC-007 | Node recovery           | Offline/reconnected nodes do not duplicate side effects.                                     | Node Runtime          | Offline/resume         | Phase 7     | `SPECIFIED` |
 
@@ -483,16 +483,16 @@ They identify areas that require explicit architectural resolution before implem
 
 | ID       | Open Question                                                                          | Required Before |
 | -------- | -------------------------------------------------------------------------------------- | --------------- |
-| OPEN-001 | Exact state/Pulse atomicity or reconciliation mechanism                                | Phase 1         |
-| OPEN-002 | Authoritative source when state and event history disagree                             | Phase 1         |
-| OPEN-003 | Exact owner of idempotency guarantee                                                   | Phase 3         |
-| OPEN-004 | Exact PlanDelta `ops[]` payload shapes                                                 | Phase 2         |
-| OPEN-005 | Exact budget accounting semantics: reservation, actual cost, streaming, reconciliation | Phase 2         |
-| OPEN-006 | Exact taint clearance scope semantics                                                  | Phase 1 / 2     |
+| OPEN-001 | Exact state/Pulse atomicity or reconciliation mechanism                                | Phase 1         | Resolved: ADR-0002 |
+| OPEN-002 | Authoritative source when state and event history disagree                             | Phase 1         | Resolved: ADR-0002 |
+| OPEN-003 | Exact owner of idempotency guarantee                                                   | Phase 3         | Resolved: ADR-0006 |
+| OPEN-004 | Exact PlanDelta `ops[]` payload shapes                                                 | Phase 2         | Resolved: ADR-0003 |
+| OPEN-005 | Exact budget accounting semantics: reservation, actual cost, streaming, reconciliation | Phase 2         | Architecture §4 / admission.py |
+| OPEN-006 | Exact taint clearance scope semantics                                                  | Phase 1 / 2     | taint.py / Architecture §10 |
 | OPEN-007 | Secret sanitization boundary for LLM recording                                         | Phase 5         |
 | OPEN-008 | Exact Reconciler responsibility relative to Monitor and Adapter/Reflector              | Phase 4         |
-| OPEN-009 | Recovery semantics for approval state                                                  | Phase 2         |
-| OPEN-010 | Resource queue fairness/starvation policy                                              | Phase 3         |
+| OPEN-009 | Recovery semantics for approval state                                                  | Phase 2         | approver.py |
+| OPEN-010 | Resource queue fairness/starvation policy                                              | Phase 3         | Resolved: ADR-0005 |
 
 If the frozen architecture already answers an open question, the architecture is authoritative and the row must be updated to point to the relevant section.
 
