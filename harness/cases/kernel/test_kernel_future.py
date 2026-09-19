@@ -32,7 +32,46 @@ def test_kernel_concurrency_lease_enforcement() -> None:
 
 
 def test_kernel_agent_execution_supervision() -> None:
-    pytest.skip("spec §4, KERNEL-005 — Phase 5: Agent execution supervision not implemented.")
+    """KERNEL-005: Agent capability execution is supervised by Space Kernel Admission."""
+    from ryu.pulse_bus.bus import PulseBus
+
+    from agents.base import BaseAgent
+    from core.capabilities.admission import CapabilityRequest
+    from core.space.kernel import SpaceKernel
+    from llm.provider import MockLLMProvider
+
+    bus = PulseBus()
+    kernel = SpaceKernel(space_id="space-supervise", owner_id="user-1", bus=bus)
+    kernel.admission.set_budget("space-supervise", budget=50.0, policy_mode="hard_stop")
+
+    agent = BaseAgent(
+        agent_id="agent-supervised-1",
+        space_id="space-supervise",
+        provider=MockLLMProvider(),
+        allowed_capabilities={"fs.read", "compute.read", "metrics.read"},
+    )
+
+    # 1. Valid proposal by agent
+    proposal = agent.step("task-1", "Inspect system health")
+    assert proposal.is_valid is True
+
+    # 2. Kernel supervises execution: Admitted within budget
+    admit_req = CapabilityRequest(
+        capability="compute.read",
+        requester_id=agent.agent_id,
+        space_id=agent.space_id,
+    )
+    resp = kernel.request_capability(admit_req)
+    assert resp.status == "ok"
+
+    # 3. Kernel blocks unbudgeted or cross-space execution
+    cross_space_req = CapabilityRequest(
+        capability="compute.read",
+        requester_id=agent.agent_id,
+        space_id="foreign-space",
+    )
+    with pytest.raises(PermissionError):
+        kernel.request_capability(cross_space_req)
 
 
 def test_kernel_checkpoint_restore() -> None:

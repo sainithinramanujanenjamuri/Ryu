@@ -268,13 +268,13 @@ Contract consumers must not create conflicting local definitions.
 
 | ID        | Contract            | Required Invariant                                                                     | Implementation    | Harness                | Roadmap  | Status      |
 | --------- | ------------------- | -------------------------------------------------------------------------------------- | ----------------- | ---------------------- | -------- | ----------- |
-| AGENT-001 | Agent state machine | Agent behavior is represented as deterministic states with stochastic LLM transitions. | `agents/base.py`  | State transition tests | Phase 5  | `SPECIFIED` |
-| AGENT-002 | LLM boundary        | LLM code does not enter deterministic `core/`.                                         | Dependency guard  | CI                     | Phase 0+ | `SPECIFIED` |
-| AGENT-003 | LLM recording       | Calls are recorded by `correlation_id`.                                                | `llm/recorder.py` | Recorder test          | Phase 5  | `SPECIFIED` |
-| AGENT-004 | Replay              | Recorded LLM outputs can reproduce Agent transitions.                                  | Recorder / Agent  | Replay fuzz            | Phase 5  | `SPECIFIED` |
-| AGENT-005 | Context scopes      | Task, Agent, and Space scopes remain distinct.                                         | Context Manager   | Context suite          | Phase 5  | `SPECIFIED` |
-| AGENT-006 | Compaction          | Pinned information survives compaction.                                                | Context Manager   | 500-turn test          | Phase 5  | `SPECIFIED` |
-| AGENT-007 | Handoff             | Recovery uses the defined Handoff Note contract.                                       | Context Manager   | Recovery test          | Phase 5  | `SPECIFIED` |
+| AGENT-001 | Agent state machine | Agent behavior is represented as deterministic states with stochastic LLM transitions. | `agents/base.py`  | State transition tests | Phase 5  | `GATE_VERIFIED` |
+| AGENT-002 | LLM boundary        | LLM code does not enter deterministic `core/`.                                         | Dependency guard  | CI                     | Phase 0+ | `GATE_VERIFIED` |
+| AGENT-003 | LLM recording       | Calls are recorded by `correlation_id`.                                                | `llm/recorder.py` | Recorder test          | Phase 5  | `GATE_VERIFIED` |
+| AGENT-004 | Replay              | Recorded LLM outputs can reproduce Agent transitions.                                  | Recorder / Agent  | Replay fuzz            | Phase 5  | `GATE_VERIFIED` |
+| AGENT-005 | Context scopes      | Task, Agent, and Space scopes remain distinct.                                         | Context Manager   | Context suite          | Phase 5  | `GATE_VERIFIED` |
+| AGENT-006 | Compaction          | Pinned information survives compaction.                                                | Context Manager   | 500-turn test          | Phase 5  | `GATE_VERIFIED` |
+| AGENT-007 | Handoff             | Recovery uses the defined Handoff Note contract.                                       | Context Manager   | Recovery test          | Phase 5  | `GATE_VERIFIED` |
 
 ---
 
@@ -489,7 +489,7 @@ They identify areas that require explicit architectural resolution before implem
 | OPEN-004 | Exact PlanDelta `ops[]` payload shapes                                                 | Phase 2         | Resolved: ADR-0003 |
 | OPEN-005 | Exact budget accounting semantics: reservation, actual cost, streaming, reconciliation | Phase 2         | Architecture §4 / admission.py |
 | OPEN-006 | Exact taint clearance scope semantics                                                  | Phase 1 / 2     | taint.py / Architecture §10 |
-| OPEN-007 | Secret sanitization boundary for LLM recording                                         | Phase 5         |
+| OPEN-007 | Secret sanitization boundary for LLM recording                                         | Phase 5         | Resolved: ADR-0011 |
 | OPEN-008 | Exact Reconciler responsibility relative to Monitor and Adapter/Reflector              | Phase 4         | Resolved: ADR-0008 |
 | OPEN-009 | Recovery semantics for approval state                                                  | Phase 2         | approver.py |
 | OPEN-010 | Resource queue fairness/starvation policy                                              | Phase 3         | Resolved: ADR-0005 |

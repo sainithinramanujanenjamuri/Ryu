@@ -10,8 +10,7 @@ def test_validator_types_match_generated_module() -> None:
     gen_path = repo_root / "contracts" / "codegen" / "python"
     if str(gen_path) not in sys.path:
         sys.path.insert(0, str(gen_path))
-    from generated.pulse_models import ALL_PULSE_TYPES
+    from generated.pulse_models import ALL_PULSE_TYPES  # type: ignore[import-not-found]
 
     v = PulseValidator()
     assert v.known_types() == frozenset(ALL_PULSE_TYPES)
-

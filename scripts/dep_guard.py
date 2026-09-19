@@ -24,9 +24,21 @@ import ast
 import sys
 from pathlib import Path
 
-FORBIDDEN_PREFIXES = ("agents", "workers", "skills", "workflows")
+FORBIDDEN_PREFIXES = (
+    "agents",
+    "workers",
+    "skills",
+    "workflows",
+    "llm",
+    "openai",
+    "anthropic",
+    "ollama",
+    "transformers",
+)
 
-BOUNDARY_DESCRIPTION = "core/ MUST NOT import agents/, workers/, skills/, or workflows/"
+BOUNDARY_DESCRIPTION = (
+    "core/ MUST NOT import agents/, workers/, skills/, workflows/, llm/, or concrete LLM SDKs"
+)
 
 
 def find_repo_root() -> Path:
@@ -98,4 +110,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

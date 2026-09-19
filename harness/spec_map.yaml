@@ -354,3 +354,56 @@ spec_map:
     roadmap_phase: 4
     evidence_state: "IMPLEMENTED"
 
+  # -----------------------------------------------------------------------
+  # Phase 5 — First Real Agent, LLM Boundary, Recording & Replay
+  # -----------------------------------------------------------------------
+
+  - id: AGENT-001
+    title: "Agent behavior is represented as deterministic states with LLM transition function"
+    harness_case: "harness/cases/agents/test_agents_future.py"
+    roadmap_phase: 5
+    evidence_state: "IMPLEMENTED"
+
+  - id: AGENT-002
+    title: "LLM code does not enter deterministic core"
+    harness_case: "harness/cases/agents/test_agents_future.py"
+    roadmap_phase: 5
+    evidence_state: "IMPLEMENTED"
+
+  - id: AGENT-003
+    title: "LLM calls are recorded by correlation_id with secret sanitization"
+    harness_case: "harness/cases/agents/test_secret_leakage_adversarial.py"
+    roadmap_phase: 5
+    evidence_state: "IMPLEMENTED"
+
+  - id: AGENT-004
+    title: "Recorded LLM outputs deterministically reproduce Agent transitions with zero live calls"
+    harness_case: "harness/cases/agents/test_deterministic_replay.py"
+    roadmap_phase: 5
+    evidence_state: "IMPLEMENTED"
+
+  - id: AGENT-005
+    title: "Task, Agent, and Space context scopes remain distinct and enforce mutation authority"
+    harness_case: "harness/cases/agents/test_context_scopes_and_compaction.py"
+    roadmap_phase: 5
+    evidence_state: "IMPLEMENTED"
+
+  - id: AGENT-006
+    title: "Pinned information survives 500-turn compaction"
+    harness_case: "harness/cases/agents/test_context_scopes_and_compaction.py"
+    roadmap_phase: 5
+    evidence_state: "IMPLEMENTED"
+
+  - id: AGENT-007
+    title: "Recovery uses the defined Handoff Note contract"
+    harness_case: "harness/cases/agents/test_context_scopes_and_compaction.py"
+    roadmap_phase: 5
+    evidence_state: "IMPLEMENTED"
+
+  - id: KERNEL-005
+    title: "Agent capability execution is supervised by Space Kernel Admission"
+    harness_case: "harness/cases/kernel/test_kernel_future.py"
+    roadmap_phase: 5
+    evidence_state: "IMPLEMENTED"
+
+
