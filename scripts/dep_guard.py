@@ -30,6 +30,9 @@ FORBIDDEN_PREFIXES = (
     "skills",
     "workflows",
     "llm",
+    "channels",
+    "click",
+    "typer",
     "openai",
     "anthropic",
     "ollama",
@@ -37,7 +40,7 @@ FORBIDDEN_PREFIXES = (
 )
 
 BOUNDARY_DESCRIPTION = (
-    "core/ MUST NOT import agents/, workers/, skills/, workflows/, llm/, or concrete LLM SDKs"
+    "core/ MUST NOT import agents/, workers/, skills/, workflows/, llm/, channels/, or CLI/LLM SDKs"
 )
 
 

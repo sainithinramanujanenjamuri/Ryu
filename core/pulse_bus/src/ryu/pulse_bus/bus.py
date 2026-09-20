@@ -98,7 +98,7 @@ class PulseBus:
             PulseRejectedError: on unknown type or invalid payload.
         """
         # Step 1 + 2: validate before ANYTHING is appended
-        self._validator.validate(pulse.type, pulse.payload)
+        self._validator.validate(pulse.type, pulse.payload, source=pulse.source)
 
         # Step 3: resolve taint from parent chain (TAINT-002)
         pulse = self._resolve_taint(pulse)

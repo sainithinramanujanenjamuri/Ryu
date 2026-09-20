@@ -104,11 +104,12 @@ class SpaceKernel:
         self,
         request: CapabilityRequest,
         is_tainted: bool = False,
+        approval: Any | None = None,
     ) -> CapabilityResponse:
         """
         Evaluate and admit a capability request.
 
-        Enforces Space isolation, Taint grant protection (TAINT-005), and Admission budget checks.
+        Enforces Space isolation, Taint grant protection (TAINT-005), and Admission budget/approval checks.
         """
         self.verify_space_identity(request.space_id)
 
@@ -142,7 +143,12 @@ class SpaceKernel:
                 cost=0.0,
             )
 
-        return self.admission.check_admission(request)
+        return self.admission.check_admission(
+            request,
+            approval=approval,
+            is_tainted=is_tainted,
+            current_plan_version=self.get_plan_version(),
+        )
 
     def commit_plan_delta(
         self,

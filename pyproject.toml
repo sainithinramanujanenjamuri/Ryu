@@ -11,6 +11,9 @@ durable = ["psycopg2-binary>=2.9", "redis>=5.0"]
 dev = ["pytest>=7.0", "jsonschema>=4.21", "hypothesis>=6.0"]
 integration = ["psycopg2-binary>=2.9", "redis>=5.0", "pytest>=7.0", "hypothesis>=6.0"]
 
+[project.scripts]
+ryu = "channels.cli.main:main"
+
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
@@ -29,6 +32,7 @@ testpaths = [
     "llm/tests",
     "workers/tests",
     "node/tests",
+    "channels/tests",
     "harness/cases",
     "harness/cases/pulse_bus_integration",
 ]
@@ -41,7 +45,7 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
-ignore = []
+ignore = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"

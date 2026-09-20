@@ -559,5 +559,136 @@ spec_map:
     roadmap_phase: 7
     evidence_state: "GATE_VERIFIED"
 
+  # -----------------------------------------------------------------------
+  # Phase 8 — CLI Channel + Human Gates
+  # -----------------------------------------------------------------------
+
+  - id: CLI-001
+    title: "Runtime health and space overview"
+    architecture_section: "docs/Architecture §2, §4, CONTRACT_MATRIX CLI-001"
+    acceptance_criterion: >
+      ryu status displays runtime health, space overview, and attention budget saturation.
+    harness_case: "harness/cases/cli/test_cli_e2e.py"
+    roadmap_phase: 8
+    evidence_state: "GATE_VERIFIED"
+
+  - id: CLI-002
+    title: "Approve pending human gate via CLI"
+    architecture_section: "docs/Architecture §4, §16, CONTRACT_MATRIX CLI-002"
+    acceptance_criterion: >
+      ryu approval approve verifies token-hmac-v1 and executes atomic CAS transition to approved.
+    harness_case: "harness/cases/cli/test_cli_e2e.py"
+    roadmap_phase: 8
+    evidence_state: "GATE_VERIFIED"
+
+  - id: CLI-003
+    title: "Reject pending human gate via CLI"
+    architecture_section: "docs/Architecture §4, §16, CONTRACT_MATRIX CLI-003"
+    acceptance_criterion: >
+      ryu approval reject verifies token-hmac-v1 and executes atomic CAS transition to denied.
+    harness_case: "harness/cases/cli/test_cli_e2e.py"
+    roadmap_phase: 8
+    evidence_state: "GATE_VERIFIED"
+
+  - id: CLI-004
+    title: "List approval requests with filtering"
+    architecture_section: "docs/Architecture §2, §4, CONTRACT_MATRIX CLI-004"
+    acceptance_criterion: >
+      ryu approval list filters approvals by space, lifecycle status, and queue state.
+    harness_case: "harness/cases/cli/test_cli_e2e.py"
+    roadmap_phase: 8
+    evidence_state: "GATE_VERIFIED"
+
+  - id: CLI-005
+    title: "Inspect approval request details and taint"
+    architecture_section: "docs/Architecture §2, §4, CONTRACT_MATRIX CLI-005"
+    acceptance_criterion: >
+      ryu approval inspect renders full capability details, risk tier, and taint warning badge.
+    harness_case: "harness/cases/cli/test_cli_e2e.py"
+    roadmap_phase: 8
+    evidence_state: "GATE_VERIFIED"
+
+  - id: CLI-006
+    title: "Manage and inspect Spaces via CLI"
+    architecture_section: "docs/Architecture §2, §4, CONTRACT_MATRIX CLI-006"
+    acceptance_criterion: >
+      ryu space list and ryu space inspect display space configuration and designated approver.
+    harness_case: "harness/cases/cli/test_cli_e2e.py"
+    roadmap_phase: 8
+    evidence_state: "GATE_VERIFIED"
+
+  - id: CLI-007
+    title: "Inspect tasks in a Space via CLI"
+    architecture_section: "docs/Architecture §2, §4, CONTRACT_MATRIX CLI-007"
+    acceptance_criterion: >
+      ryu task list and ryu task inspect display active execution plan tasks and checkpoints.
+    harness_case: "harness/cases/cli/test_cli_e2e.py"
+    roadmap_phase: 8
+    evidence_state: "GATE_VERIFIED"
+
+  - id: CLI-008
+    title: "Inspect immutable audit stream via CLI"
+    architecture_section: "docs/Architecture §2, §16, CONTRACT_MATRIX CLI-008"
+    acceptance_criterion: >
+      ryu audit stream reads immutable pulse log with space and type filtering.
+    harness_case: "harness/cases/cli/test_cli_e2e.py"
+    roadmap_phase: 8
+    evidence_state: "GATE_VERIFIED"
+
+  - id: HUMAN-001
+    title: "End-to-end capability approval flow"
+    architecture_section: "docs/Architecture §4, §16, CONTRACT_MATRIX HUMAN-001"
+    acceptance_criterion: >
+      CapabilityRequest blocked until authenticated CLI approval, then atomically admitted and consumed.
+    harness_case: "harness/cases/cli/test_cli_e2e.py"
+    roadmap_phase: 8
+    evidence_state: "GATE_VERIFIED"
+
+  - id: HUMAN-002
+    title: "Default-deny timeout policy"
+    architecture_section: "docs/Architecture §4, §10, CONTRACT_MATRIX HUMAN-002"
+    acceptance_criterion: >
+      Unresponsive default_deny request expires and capability admission is denied.
+    harness_case: "harness/cases/cli/test_cli_e2e.py"
+    roadmap_phase: 8
+    evidence_state: "GATE_VERIFIED"
+
+  - id: HUMAN-003
+    title: "Default-hold timeout policy"
+    architecture_section: "docs/Architecture §4, §10, CONTRACT_MATRIX HUMAN-003"
+    acceptance_criterion: >
+      Budget request timeout transitions to held, execution paused without auto-approval.
+    harness_case: "harness/cases/cli/test_cli_e2e.py"
+    roadmap_phase: 8
+    evidence_state: "GATE_VERIFIED"
+
+  - id: HUMAN-004
+    title: "Attention saturation pauses orchestrator dispatch"
+    architecture_section: "docs/Architecture §4, §10, CONTRACT_MATRIX HUMAN-004"
+    acceptance_criterion: >
+      Attention saturation (>= limit) queues excess gates and pauses orchestrator dispatch.
+    harness_case: "harness/cases/cli/test_cli_e2e.py"
+    roadmap_phase: 8
+    evidence_state: "GATE_VERIFIED"
+
+  - id: HUMAN-005
+    title: "Attention budget prioritized dequeuing"
+    architecture_section: "docs/Architecture §4, §10, CONTRACT_MATRIX HUMAN-005"
+    acceptance_criterion: >
+      Completion of active approval pops highest-priority queued request and activates it.
+    harness_case: "harness/cases/cli/test_cli_e2e.py"
+    roadmap_phase: 8
+    evidence_state: "GATE_VERIFIED"
+
+  - id: REC-006
+    title: "Audit trail immutability enforcement"
+    architecture_section: "docs/Architecture §16, CONTRACT_MATRIX REC-006"
+    acceptance_criterion: >
+      Database pulses table enforces append-only immutability via trigger preventing UPDATE/DELETE.
+    harness_case: "harness/cases/cli/test_cli_e2e.py"
+    roadmap_phase: 8
+    evidence_state: "GATE_VERIFIED"
+
+
 
 

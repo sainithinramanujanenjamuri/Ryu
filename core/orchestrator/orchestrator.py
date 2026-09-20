@@ -223,6 +223,14 @@ class SpaceOrchestrator:
         with self._lock:
             return self._sessions.get(command_id)
 
+    def is_attention_saturated(self) -> bool:
+        """Query Space Kernel's AttentionBudget saturation state (ADR-0025)."""
+        return self.kernel.attention.is_saturated(self.space_id)
+
+    def should_pause_dispatch_for_gates(self) -> bool:
+        """Return True if attention budget is saturated and gate-requiring dispatch should pause."""
+        return self.is_attention_saturated()
+
     def close(self) -> None:
         """Clean up bus subscriptions."""
         if hasattr(self.bus, "unsubscribe"):

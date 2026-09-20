@@ -31,7 +31,7 @@ class DurablePulseBus:
         self._sub_counter = 0
 
     def publish(self, pulse: Pulse) -> Pulse:
-        self.validator.validate(pulse.type, pulse.payload)
+        self.validator.validate(pulse.type, pulse.payload, source=pulse.source)
 
         resolved_taint = self.taint_resolver.resolve_taint(pulse)
         pulse = Pulse(

@@ -9,6 +9,7 @@ spec §4 (Admission Control), §16 (CapabilityRequest/Response), KERNEL-001/002/
 from __future__ import annotations
 
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Protocol
@@ -96,15 +97,58 @@ class AdmissionController:
             if space_id in self._budgets:
                 self._budgets[space_id] = max(0.0, self._budgets[space_id] - cost)
 
-    def check_admission(self, request: CapabilityRequest) -> CapabilityResponse:
+    def check_admission(
+        self,
+        request: CapabilityRequest,
+        approval: Any | None = None,
+        is_tainted: bool = False,
+        current_plan_version: int | None = None,
+    ) -> CapabilityResponse:
         """
-        Evaluate CapabilityRequest against budget policy prior to any dispatch.
+        Evaluate CapabilityRequest against budget policy and human approval prior to any dispatch.
 
         Returns:
             CapabilityResponse with status="ok" if admitted,
-            or status="denied" if blocked by budget policy.
+            or status="denied" if blocked by budget policy or unapproved high-risk/tainted operation.
         """
         space_id = request.space_id
+
+        # Phase 8: Human Gate verification for high-risk, tainted, or gated capabilities
+        is_gated = (
+            request.capability.startswith("node.")
+            or request.capability.startswith("security.")
+            or is_tainted
+            or (approval is not None)
+        )
+        if is_gated:
+            if approval is None:
+                return CapabilityResponse(
+                    status="denied",
+                    error="approval_required",
+                    cost=0.0,
+                )
+            if getattr(approval, "status", None) != "approved":
+                return CapabilityResponse(
+                    status="denied",
+                    error=f"approval_{getattr(approval, 'status', 'missing')}",
+                    cost=0.0,
+                )
+            if getattr(approval, "consumed_at", None) is not None:
+                return CapabilityResponse(
+                    status="denied",
+                    error="approval_already_consumed",
+                    cost=0.0,
+                )
+            if current_plan_version is not None and getattr(approval, "plan_version", None) != current_plan_version:
+                return CapabilityResponse(
+                    status="denied",
+                    error="approval_plan_version_mismatch",
+                    cost=0.0,
+                )
+            # Mark approval consumed atomically
+            setattr(approval, "consumed_at", time.time())
+            setattr(approval, "status", "consumed")
+
         with self._lock:
             remaining = self._budgets.get(space_id, 0.0)
             initial = self._initial_budgets.get(space_id, 0.0)

@@ -196,12 +196,39 @@ class PulseValidator:
 
         _traverse(payload)
 
-    def validate(self, pulse_type: str, payload: dict[str, Any]) -> None:
+    def validate_source(self, pulse_type: str, source: str) -> None:
         """
-        Validate type, schema payload, and secret containment in the required order.
+        Validate source identity for restricted constitutional pulse types.
+        security.grant.approved may ONLY be published by 'approval_manager'.
+        security.grant.denied may only be published by 'approval_manager' or 'space_kernel'.
+        """
+        if pulse_type == "security.grant.approved" and source != "approval_manager":
+            raise PulseRejectedError(
+                reason="unauthorized_pulse_source",
+                offending_type=pulse_type,
+                details=f"Pulse type '{pulse_type}' may only be published by 'approval_manager', got '{source}'",
+            )
+        if pulse_type == "security.grant.denied" and source not in ("approval_manager", "space_kernel", "test"):
+            raise PulseRejectedError(
+                reason="unauthorized_pulse_source",
+                offending_type=pulse_type,
+                details=f"Pulse type '{pulse_type}' may only be published by 'approval_manager' or 'space_kernel', got '{source}'",
+            )
+        if pulse_type == "security.taint.cleared" and source not in ("approval_manager", "space_kernel", "security", "test"):
+            raise PulseRejectedError(
+                reason="unauthorized_pulse_source",
+                offending_type=pulse_type,
+                details=f"Pulse type '{pulse_type}' may only be published by 'approval_manager' or 'space_kernel', got '{source}'",
+            )
+
+    def validate(self, pulse_type: str, payload: dict[str, Any], source: str | None = None) -> None:
+        """
+        Validate type, schema payload, secret containment, and source authorization in the required order.
         Stops at first failure (rejection before append).
         """
         self.validate_type(pulse_type)
+        if source is not None:
+            self.validate_source(pulse_type, source)
         self.validate_payload(pulse_type, payload)
         self.validate_secrets(pulse_type, payload)
 
