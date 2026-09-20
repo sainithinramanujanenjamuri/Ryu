@@ -42,3 +42,34 @@ class CLIContext:
         self.out_stream.write(format_json(data) + "\n")
         self.out_stream.flush()
 
+
+def create_default_context() -> CLIContext:
+    """Create a CLIContext with default fallback stores and approval client."""
+    from ryu.pulse_bus.config import DurableBusConfig
+
+    from channels.approval.auth import ApproverAuthenticator, InMemoryCredentialStore
+    from channels.approval.client import ApprovalClient
+    from channels.approval.store import PostgresApprovalStore
+    from core.space.approver import ApprovalManager, InMemoryApprovalStore
+
+    store: Any
+    try:
+        pg_cfg = DurableBusConfig.from_env().pg
+        pg_store = PostgresApprovalStore(pg_cfg)
+        conn = pg_store._get_conn()
+        conn.close()
+        store = pg_store
+    except Exception:
+        store = InMemoryApprovalStore()
+
+    manager = ApprovalManager(store=store)
+    cred_store = InMemoryCredentialStore()
+    auth = ApproverAuthenticator(
+        cred_store=cred_store,
+        nonce_store=cred_store,
+        secret_store={},
+    )
+    client = ApprovalClient(manager=manager, authenticator=auth)
+    return CLIContext(approval_client=client)
+
+

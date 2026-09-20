@@ -14,7 +14,7 @@ from channels.cli.commands.audit import register_audit_parser
 from channels.cli.commands.space import register_space_parser
 from channels.cli.commands.status import register_status_parser
 from channels.cli.commands.task import register_task_parser
-from channels.cli.context import CLIContext
+from channels.cli.context import CLIContext, create_default_context
 
 EXIT_SUCCESS = 0
 EXIT_GENERAL_ERROR = 1
@@ -56,7 +56,7 @@ def create_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None, ctx: CLIContext | None = None) -> int:
     """Execute the CLI router and dispatch commands."""
     args_list = list(argv) if argv is not None else sys.argv[1:]
-    context = ctx if ctx is not None else CLIContext()
+    context = ctx if ctx is not None else create_default_context()
 
     if "--json" in args_list:
         context.json_output = True
