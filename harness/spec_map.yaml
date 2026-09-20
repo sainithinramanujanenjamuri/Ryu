@@ -406,4 +406,57 @@ spec_map:
     roadmap_phase: 5
     evidence_state: "IMPLEMENTED"
 
+  # -----------------------------------------------------------------------
+  # Phase 6 — Workers, Sandbox Execution, and Seccomp Containment
+  # -----------------------------------------------------------------------
+
+  - id: WORKER-001
+    title: "Uniform execution interface: Workers return artifacts or Pulse-typed failures"
+    harness_case: "harness/cases/workers/test_workers_future.py"
+    roadmap_phase: 6
+    evidence_state: "IMPLEMENTED"
+
+  - id: WORKER-002
+    title: "Data/instruction separation: External payload is data, not executable instruction"
+    harness_case: "harness/cases/workers/test_workers_future.py"
+    roadmap_phase: 6
+    evidence_state: "IMPLEMENTED"
+
+  - id: WORKER-003
+    title: "Sandbox enforcement: Disallowed filesystem/network operations are blocked"
+    harness_case: "harness/cases/workers/test_workers_future.py"
+    roadmap_phase: 6
+    evidence_state: "IMPLEMENTED"
+
+  - id: WORKER-004
+    title: "Failure taxonomy: Workers use the central failure taxonomy"
+    harness_case: "harness/cases/workers/test_worker_chaos.py"
+    roadmap_phase: 6
+    evidence_state: "IMPLEMENTED"
+
+  - id: WORKER-005
+    title: "Subagent isolation: Subagent receives only Handoff Note + relevant plan node"
+    harness_case: "workers/tests/test_specialized_workers.py"
+    roadmap_phase: 6
+    evidence_state: "IMPLEMENTED"
+
+  - id: SECRET-004
+    title: "Linux Seccomp syscall filter and Windows platform containment adapter"
+    harness_case: "harness/cases/security/test_security_future.py"
+    roadmap_phase: 6
+    evidence_state: "IMPLEMENTED"
+
+  - id: TAINT-001
+    title: "Boundary taint: Untrusted external content enters as tainted data"
+    harness_case: "harness/cases/workers/test_workers_future.py"
+    roadmap_phase: 6
+    evidence_state: "IMPLEMENTED"
+
+  - id: TAINT-006
+    title: "Anti-laundering: Transforming tainted content must not silently erase provenance"
+    harness_case: "harness/cases/security/test_security_future.py"
+    roadmap_phase: 6
+    evidence_state: "IMPLEMENTED"
+
+
 

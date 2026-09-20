@@ -174,10 +174,10 @@ Contract consumers must not create conflicting local definitions.
 | ID         | Contract             | Required Invariant                                                | Implementation          | Harness                 | Roadmap     | Status      |
 | ---------- | -------------------- | ----------------------------------------------------------------- | ----------------------- | ----------------------- | ----------- | ----------- |
 | SECRET-001 | Secret references    | Requests carry `secret://` references, not resolved credentials.  | `secrets.py`            | `test_secrets.py`             | Phase 2     | `UNIT_VERIFIED` |
-| SECRET-002 | Late resolution      | Secret resolution occurs at the last possible execution boundary. | Sandbox / `secrets.py`  | `test_secrets.py`             | Phase 2 / 6 | `UNIT_VERIFIED` |
+| SECRET-002 | Late resolution      | Secret resolution occurs at the last possible execution boundary. | Sandbox / `secrets.py`  | `test_secrets.py`, `test_secret_sanitization.py` | Phase 2 / 6 | `GATE_VERIFIED` |
 | SECRET-003 | No Pulse leakage     | Resolved secret values never appear in Pulse payloads.            | Validator / persistence | `test_security_containment.py`| Phase 2     | `GATE_VERIFIED` |
-| SECRET-004 | No handoff leakage   | Resolved secret values never enter Handoff Notes.                 | Context Manager         | Secret leak test        | Phase 2 / 5 | `SPECIFIED`     |
-| SECRET-005 | No failure leakage   | Secrets cannot appear in failure messages, traces, or logs.       | Runtime / observability | Secret leak regression  | Phase 2+    | `SPECIFIED`     |
+| SECRET-004 | No handoff leakage   | Resolved secret values never enter Handoff Notes.                 | Context Manager         | `test_security_future.py`, `test_secret_sanitization.py` | Phase 2 / 5 / 6 | `GATE_VERIFIED` |
+| SECRET-005 | No failure leakage   | Secrets cannot appear in failure messages, traces, or logs.       | Runtime / observability / BaseWorker | `test_secret_sanitization.py`, `test_worker_security_adversarial.py` | Phase 2+ / 6 | `GATE_VERIFIED` |
 | SECRET-006 | LLM recording safety | Full-call recording must coexist with secret containment.         | LLM Recorder            | Recorder redaction test | Phase 5     | `SPECIFIED`     |
 
 ---
@@ -227,14 +227,14 @@ Contract consumers must not create conflicting local definitions.
 
 # 14. Taint and Prompt-Injection Contracts
 
-| ID        | Contract               | Required Invariant                                               | Implementation       | Harness           | Roadmap     | Status      |
-| --------- | ---------------------- | ---------------------------------------------------------------- | -------------------- | ----------------- | ----------- | ----------- |
-| TAINT-001 | Boundary taint         | Untrusted external content enters as tainted data.               | Channels / Workers   | Injection suite               | Phase 6 / 8 | `SPECIFIED`     |
+| ID        | Contract               | Required Invariant                                               | Implementation       | Harness           | Roadmap     | Status          |
+| --------- | ---------------------- | ---------------------------------------------------------------- | -------------------- | ----------------- | ----------- | --------------- |
+| TAINT-001 | Boundary taint         | Untrusted external content enters as tainted data.               | Channels / Workers   | `test_workers_future.py`, `test_worker_security_adversarial.py` | Phase 6 / 8 | `GATE_VERIFIED` |
 | TAINT-002 | Propagation            | Taint propagates through the causal chain.                       | Pulse Bus            | Taint chain                   | Phase 0 / 1 | `SPECIFIED`     |
 | TAINT-003 | Forward-only clearance | Clearance affects future propagation only.                       | Taint manager        | Clearance test                | Phase 1 / 2 | `SPECIFIED`     |
 | TAINT-004 | Clearance audit        | Clearance itself is represented by a Pulse.                      | Pulse Bus            | Clearance audit               | Phase 1 / 2 | `SPECIFIED`     |
 | TAINT-005 | Grant protection       | Tainted instructions cannot silently produce high-risk grants.   | Admission / Security | `test_security_containment.py`| Phase 2 / 6 | `GATE_VERIFIED` |
-| TAINT-006 | Anti-laundering        | Transforming tainted content must not silently erase provenance. | Taint system         | Propagation suite             | Phase 2+    | `SPECIFIED`     |
+| TAINT-006 | Anti-laundering        | Transforming tainted content must not silently erase provenance. | Taint system         | `test_security_future.py`     | Phase 2+    | `GATE_VERIFIED` |
 
 ---
 
@@ -280,13 +280,13 @@ Contract consumers must not create conflicting local definitions.
 
 # 18. Worker Contracts
 
-| ID         | Contract                    | Required Invariant                                        | Implementation   | Harness                | Roadmap | Status      |
-| ---------- | --------------------------- | --------------------------------------------------------- | ---------------- | ---------------------- | ------- | ----------- |
-| WORKER-001 | Uniform execution interface | Workers return artifacts or Pulse-typed failures.         | Worker interface | Worker suite           | Phase 6 | `SPECIFIED` |
-| WORKER-002 | Data/instruction separation | External payload is data, not executable instruction.     | Worker interface | Injection canary       | Phase 6 | `SPECIFIED` |
-| WORKER-003 | Sandbox enforcement         | Disallowed filesystem/network operations are blocked.     | Sandbox          | Escape tests           | Phase 6 | `SPECIFIED` |
-| WORKER-004 | Failure taxonomy            | Workers use the central failure taxonomy.                 | Worker boundary  | Fault matrix           | Phase 6 | `SPECIFIED` |
-| WORKER-005 | Subagent isolation          | Subagent receives only Handoff Note + relevant plan node. | Subagent Worker  | History-isolation test | Phase 6 | `SPECIFIED` |
+| ID         | Contract                    | Required Invariant                                        | Implementation   | Harness                | Roadmap | Status          |
+| ---------- | --------------------------- | --------------------------------------------------------- | ---------------- | ---------------------- | ------- | --------------- |
+| WORKER-001 | Uniform execution interface | Workers return artifacts or Pulse-typed failures.         | Worker interface | `test_workers_future.py` | Phase 6 | `GATE_VERIFIED` |
+| WORKER-002 | Data/instruction separation | External payload is data, not executable instruction.     | Worker interface | `test_workers_future.py` | Phase 6 | `GATE_VERIFIED` |
+| WORKER-003 | Sandbox enforcement         | Disallowed filesystem/network operations are blocked.     | Sandbox          | `test_workers_future.py`, `test_worker_security_adversarial.py` | Phase 6 | `GATE_VERIFIED` |
+| WORKER-004 | Failure taxonomy            | Workers use the central failure taxonomy.                 | Worker boundary  | `test_worker_chaos.py`  | Phase 6 | `GATE_VERIFIED` |
+| WORKER-005 | Subagent isolation          | Subagent receives only Handoff Note + relevant plan node. | Subagent Worker  | `test_specialized_workers.py` | Phase 6 | `GATE_VERIFIED` |
 
 ---
 
