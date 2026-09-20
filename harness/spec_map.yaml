@@ -458,5 +458,106 @@ spec_map:
     roadmap_phase: 6
     evidence_state: "IMPLEMENTED"
 
+  # -----------------------------------------------------------------------
+  # Phase 7 — Node Runtime, Device Grants, and Rust Runtime Bridge
+  # -----------------------------------------------------------------------
+
+  - id: NODE-001
+    title: "Node Runtime is Rust, not Python; workspace compilable"
+    architecture_section: "docs/Architecture §11 (Node Runtime), CONTRACT_MATRIX NODE-001"
+    acceptance_criterion: >
+      Node Runtime boundary is implemented in Rust (ryu-node), verifiable via cargo check
+      and typed bridge invocation.
+    contract:
+      file: "node_runtime/crates/ryu-node-proto/src/lib.rs"
+      rule: "native binary execution boundary"
+    harness_case: "harness/cases/node/test_node_future.py"
+    roadmap_phase: 7
+    evidence_state: "GATE_VERIFIED"
+
+  - id: NODE-002
+    title: "Device itself validates grants via cryptographic verification"
+    architecture_section: "docs/Architecture §11, CONTRACT_MATRIX NODE-002"
+    acceptance_criterion: >
+      Device native runtime validates HMAC-SHA256 signature in constant time against pairing key.
+    contract:
+      file: "node_runtime/crates/ryu-node/src/grant.rs"
+      rule: "constant-time HMAC-SHA256 signature validation"
+    harness_case: "harness/cases/node/test_node_future.py"
+    roadmap_phase: 7
+    evidence_state: "GATE_VERIFIED"
+
+  - id: NODE-003
+    title: "Grant bound to Space, capability, and session lease"
+    architecture_section: "docs/Architecture §11, §16, CONTRACT_MATRIX NODE-003"
+    acceptance_criterion: >
+      DeviceGrant requires active ResourceManager lease; cross-space/unauthorized attempts rejected.
+    contract:
+      file: "node/grants.py"
+      rule: "derived credential bounded by backing lease"
+    harness_case: "harness/cases/node/test_node_future.py"
+    roadmap_phase: 7
+    evidence_state: "GATE_VERIFIED"
+
+  - id: NODE-004
+    title: "Device enforces revocation mid-call"
+    architecture_section: "docs/Architecture §11, CONTRACT_MATRIX NODE-004"
+    acceptance_criterion: >
+      DeviceRuntime halts execution immediately upon grant revocation mid-call.
+    contract:
+      file: "node/runtime.py"
+      rule: "immediate halt on revocation token"
+    harness_case: "harness/cases/node/test_node_future.py"
+    roadmap_phase: 7
+    evidence_state: "GATE_VERIFIED"
+
+  - id: NODE-005
+    title: "Heartbeat lease between Kernel and Node Runtime"
+    architecture_section: "docs/Architecture §11, CONTRACT_MATRIX NODE-005"
+    acceptance_criterion: >
+      Heartbeat loss past TTL transitions node to OFFLINE and emits node.offline pulse.
+    contract:
+      file: "node/coordinator.py"
+      rule: "heartbeat TTL sweep and offline notification"
+    harness_case: "harness/cases/node/test_node_future.py"
+    roadmap_phase: 7
+    evidence_state: "GATE_VERIFIED"
+
+  - id: NODE-006
+    title: "Node disconnect creates checkpointable offline state"
+    architecture_section: "docs/Architecture §11, CONTRACT_MATRIX NODE-006"
+    acceptance_criterion: >
+      Node disconnect checkpoints in-flight tasks distinguishing idempotent from indeterminate.
+    contract:
+      file: "node/coordinator.py"
+      rule: "task checkpointing on disconnect"
+    harness_case: "harness/cases/node/test_node_future.py"
+    roadmap_phase: 7
+    evidence_state: "GATE_VERIFIED"
+
+  - id: NODE-007
+    title: "Reconnection resumes with idempotency semantics"
+    architecture_section: "docs/Architecture §11, CONTRACT_MATRIX NODE-007"
+    acceptance_criterion: >
+      Validated resume of replay-safe/idempotent tasks after lease, grant, device, and checkpoint verification.
+    contract:
+      file: "node/coordinator.py"
+      rule: "validated resume after lease, grant, device, and checkpoint verification"
+    harness_case: "harness/cases/node/test_node_future.py"
+    roadmap_phase: 7
+    evidence_state: "GATE_VERIFIED"
+
+  - id: NODE-008
+    title: "Device audit log readable independently of Ryu server"
+    architecture_section: "docs/Architecture §11, CONTRACT_MATRIX NODE-008"
+    acceptance_criterion: >
+      Node-local append-only SHA-256 hash-chained audit log verifiable independently via native ryu-node audit-verify.
+    contract:
+      file: "node/audit.py"
+      rule: "tamper-evident SHA-256 hash chaining"
+    harness_case: "harness/cases/node/test_node_future.py"
+    roadmap_phase: 7
+    evidence_state: "GATE_VERIFIED"
+
 
 

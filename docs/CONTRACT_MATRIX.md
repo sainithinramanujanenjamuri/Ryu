@@ -292,16 +292,16 @@ Contract consumers must not create conflicting local definitions.
 
 # 19. Node Runtime Contracts
 
-| ID       | Contract           | Required Invariant                                             | Implementation   | Harness              | Roadmap     | Status      |
-| -------- | ------------------ | -------------------------------------------------------------- | ---------------- | -------------------- | ----------- | ----------- |
-| NODE-001 | Language boundary  | Node Runtime is Rust, not Python.                              | `node_runtime/`  | Cargo build/check    | Phase 0 / 7 | `SPECIFIED` |
-| NODE-002 | Device enforcement | Device itself validates grants.                                | `ryu-node`       | Forged-wire test     | Phase 7     | `SPECIFIED` |
-| NODE-003 | Grant scope        | Grant is bound to Space, capability, and session.              | Grant enforcer   | Cross-use test       | Phase 7     | `SPECIFIED` |
-| NODE-004 | Revocation         | Device enforces revocation during execution.                   | Grant enforcer   | Mid-call revoke      | Phase 7     | `SPECIFIED` |
-| NODE-005 | Heartbeat lease    | Node availability is represented through heartbeat state.      | Heartbeat        | Lease tests          | Phase 7     | `SPECIFIED` |
-| NODE-006 | Offline recovery   | Node disconnect creates checkpointable offline state.          | Node coordinator | Offline test         | Phase 7     | `SPECIFIED` |
-| NODE-007 | Resume             | Reconnection resumes using the same idempotency semantics.     | Node coordinator | Resume/no-dup test   | Phase 7     | `SPECIFIED` |
-| NODE-008 | Independent audit  | Device audit remains readable without RYU server availability. | Node audit       | Physical-device test | Phase 7     | `SPECIFIED` |
+| ID       | Contract           | Required Invariant                                             | Implementation   | Harness              | Roadmap     | Status          |
+| -------- | ------------------ | -------------------------------------------------------------- | ---------------- | -------------------- | ----------- | --------------- |
+| NODE-001 | Language boundary  | Node Runtime is Rust, not Python.                              | `node_runtime/`  | Cargo build/check    | Phase 0 / 7 | `GATE_VERIFIED` |
+| NODE-002 | Device enforcement | Device itself validates grants.                                | `ryu-node`       | Forged-wire test     | Phase 7     | `GATE_VERIFIED` |
+| NODE-003 | Grant scope        | Grant is bound to Space, capability, and session.              | Grant enforcer   | Cross-use test       | Phase 7     | `GATE_VERIFIED` |
+| NODE-004 | Revocation         | Device enforces revocation during execution.                   | Grant enforcer   | Mid-call revoke      | Phase 7     | `GATE_VERIFIED` |
+| NODE-005 | Heartbeat lease    | Node availability is represented through heartbeat state.      | Heartbeat        | Lease tests          | Phase 7     | `GATE_VERIFIED` |
+| NODE-006 | Offline recovery   | Node disconnect creates checkpointable offline state.          | Node coordinator | Offline test         | Phase 7     | `GATE_VERIFIED` |
+| NODE-007 | Resume             | Reconnection resumes using the same idempotency semantics.     | Node coordinator | Resume/no-dup test   | Phase 7     | `GATE_VERIFIED` |
+| NODE-008 | Independent audit  | Device audit remains readable without RYU server availability. | Node audit       | Physical-device test | Phase 7     | `GATE_VERIFIED` |
 
 ---
 
