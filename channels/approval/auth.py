@@ -294,7 +294,14 @@ class ApproverAuthenticator:
             raise TokenRevokedError(
                 f"Approver credential for '{submission.approver_id}' was revoked: {cred.revocation_reason}"
             )
-        if datetime.now(timezone.utc) >= cred.expires_at:
+        exp = cred.expires_at
+        is_expired = False
+        if isinstance(exp, (int, float)):
+            is_expired = now >= exp
+        elif isinstance(exp, datetime):
+            exp_tz = exp if exp.tzinfo is not None else exp.replace(tzinfo=timezone.utc)
+            is_expired = datetime.now(timezone.utc) >= exp_tz
+        if is_expired:
             raise TokenExpiredError(f"Approver credential for '{submission.approver_id}' has expired")
 
         # Step 4: Nonce replay check
