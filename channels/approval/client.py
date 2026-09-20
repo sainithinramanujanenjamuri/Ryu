@@ -8,10 +8,8 @@ spec §4, §16, ROADMAP Phase 8, ADR-0022, ADR-0023 — Phase 8
 
 from __future__ import annotations
 
-import os
-import time
 import secrets
-from typing import Any
+import time
 
 from channels.approval.auth import (
     ApproverAuthenticator,

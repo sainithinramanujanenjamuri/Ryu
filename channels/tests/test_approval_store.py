@@ -5,18 +5,19 @@ spec §4, §16, ROADMAP Phase 8, ADR-0022, ADR-0024 — Phase 8
 
 import os
 import time
-import pytest
 from datetime import datetime, timedelta, timezone
 
+import pytest
+from ryu.pulse_bus.config import PostgresConfig
+
+from channels.approval.auth import ApproverCredentialRecord
+from channels.approval.store import PostgresApprovalStore
 from core.space.approver import (
     ApprovalRequest,
     InMemoryApprovalStore,
     compute_decision_signature,
     verify_decision_signature,
 )
-from channels.approval.store import PostgresApprovalStore
-from channels.approval.auth import ApproverCredentialRecord
-from ryu.pulse_bus.config import PostgresConfig
 
 
 def test_in_memory_store_save_and_get():

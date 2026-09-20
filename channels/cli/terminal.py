@@ -12,7 +12,7 @@ from __future__ import annotations
 import sys
 from typing import TextIO
 
-from channels.cli.formatters import BOLD, RED, RESET, YELLOW, color_status, color_taint
+from channels.cli.formatters import BOLD, RED, RESET, color_status, color_taint
 from core.space.approver import ApprovalRequest
 
 

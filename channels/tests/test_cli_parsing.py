@@ -5,17 +5,18 @@ spec §2, §4, ROADMAP Phase 8, CLI-001 through CLI-008 — Phase 8
 
 import io
 import json
+
 import pytest
 
+from channels.approval.auth import ApproverAuthenticator, InMemoryCredentialStore
+from channels.approval.client import ApprovalClient
 from channels.cli import (
-    CLIContext,
     EXIT_GENERAL_ERROR,
     EXIT_SUCCESS,
     EXIT_SYNTAX_ERROR,
+    CLIContext,
     main,
 )
-from channels.approval.client import ApprovalClient
-from channels.approval.auth import ApproverAuthenticator, InMemoryCredentialStore
 from core.space.approver import ApprovalManager, InMemoryApprovalStore
 
 

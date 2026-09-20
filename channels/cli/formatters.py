@@ -102,10 +102,12 @@ def format_json(data: Any) -> str:
     def custom_default(o: Any) -> Any:
         if is_dataclass(o) and not isinstance(o, type):
             return asdict(o)
-        if hasattr(o, "to_dict"):
-            return o.to_dict()
-        if hasattr(o, "isoformat"):
-            return o.isoformat()
+        to_dict = getattr(o, "to_dict", None)
+        if to_dict is not None:
+            return to_dict() if callable(to_dict) else to_dict
+        isoformat = getattr(o, "isoformat", None)
+        if callable(isoformat):
+            return isoformat()
         return str(o)
 
     return json.dumps(data, default=custom_default, indent=2)

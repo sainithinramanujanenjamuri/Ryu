@@ -11,20 +11,19 @@ spec §4, §16, ROADMAP Phase 8, ADR-0022, ADR-0023 — Phase 8
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import timezone
 from typing import Any
 
 import psycopg2
 from psycopg2.extensions import connection
+from ryu.pulse_bus.config import PostgresConfig
 
 from channels.approval.auth import ApproverCredentialRecord
 from core.space.approver import (
     ApprovalLifecycleState,
     ApprovalRequest,
     AttentionQueueState,
-    TimeoutClass,
 )
-from ryu.pulse_bus.config import PostgresConfig
 
 logger = logging.getLogger(__name__)
 

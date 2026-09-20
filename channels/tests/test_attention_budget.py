@@ -3,7 +3,6 @@
 spec §4, §10, ROADMAP Phase 8, ADR-0025 — Phase 8
 """
 
-import pytest
 from core.space.attention import AttentionBudget
 
 
