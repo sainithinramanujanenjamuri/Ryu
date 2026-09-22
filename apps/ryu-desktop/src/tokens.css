@@ -1,0 +1,108 @@
+/* RYU AI Design Tokens — SCCA Phase 8.5 (ChatGPT & Claude Code Dark Zinc Aesthetic) */
+
+:root {
+  /* Canvas & Dark Zinc Neutral Surfaces */
+  --ryu-canvas: #09090b;       /* Zinc 950 — Background */
+  --ryu-card: #18181b;         /* Zinc 900 — Cards, panels, sidebars */
+  --ryu-card-hover: #27272a;   /* Zinc 800 — Hover state */
+  --ryu-card-subtle: #121215;  /* Subtle background */
+  
+  /* Borders */
+  --ryu-border: #27272a;       /* Zinc 800 — Default border */
+  --ryu-border-subtle: #3f3f46;/* Zinc 700 — Active / Focus border */
+  --ryu-border-focus: #52525b; /* Zinc 600 */
+
+  /* Primary & Text */
+  --ryu-text-100: #fafafa;     /* Zinc 50 — High contrast headings/text */
+  --ryu-text-200: #e4e4e7;     /* Zinc 200 — Body text */
+  --ryu-text-400: #a1a1aa;     /* Zinc 400 — Muted secondary text */
+  --ryu-text-600: #71717a;     /* Zinc 500 — Dim placeholders/labels */
+
+  /* Brand Accents & Semantic Status */
+  --ryu-emerald-500: #10b981;  /* Verified, success, untainted */
+  --ryu-emerald-900: #064e3b;
+  --ryu-gold-500: #d4af37;     /* SCCA Human Attention & Gate Authority */
+  --ryu-gold-400: #e5c158;
+  --ryu-gold-900: #3a3015;
+  --ryu-blue-500: #3b82f6;     /* Single-agent & link accents */
+  --ryu-blue-800: #1e3a8a;
+  --ryu-amber-500: #f59e0b;    /* Attention saturation, warnings */
+  --ryu-red-500: #ef4444;      /* Critical failure, rejection */
+
+  /* Legacy aliases for backwards compatibility with existing components */
+  --ryu-black-900: var(--ryu-canvas);
+  --ryu-black-800: var(--ryu-card);
+  --ryu-black-700: var(--ryu-border);
+  --ryu-blue-900: #0d1527;
+  --ryu-blue-600: var(--ryu-blue-500);
+
+  /* Typography */
+  --font-mono: "Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas", monospace;
+  --font-sans: "Inter", "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--ryu-canvas);
+  color: var(--ryu-text-200);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+code, pre, .mono {
+  font-family: var(--font-mono);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--ryu-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ryu-border-subtle);
+}
+
+/* Code block highlight styling */
+.code-container {
+  background: #0d0d11;
+  border: 1px solid var(--ryu-border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 12px 0;
+}
+
+.code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 14px;
+  background: #141419;
+  border-bottom: 1px solid var(--ryu-border);
+  font-size: 11px;
+  color: var(--ryu-text-400);
+}
+
+.code-body {
+  padding: 14px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: #e2e8f0;
+}

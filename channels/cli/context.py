@@ -28,13 +28,23 @@ class CLIContext:
     in_stream: TextIO = sys.stdin
 
     def write_out(self, text: str) -> None:
-        """Write text to configured stdout stream."""
-        self.out_stream.write(text + "\n")
+        """Write text to configured stdout stream with safe encoding fallback."""
+        try:
+            self.out_stream.write(text + "\n")
+        except UnicodeEncodeError:
+            enc = getattr(self.out_stream, "encoding", None) or "ascii"
+            safe_text = text.encode(enc, errors="replace").decode(enc)
+            self.out_stream.write(safe_text + "\n")
         self.out_stream.flush()
 
     def write_err(self, text: str) -> None:
-        """Write text to configured stderr stream."""
-        self.err_stream.write(text + "\n")
+        """Write text to configured stderr stream with safe encoding fallback."""
+        try:
+            self.err_stream.write(text + "\n")
+        except UnicodeEncodeError:
+            enc = getattr(self.err_stream, "encoding", None) or "ascii"
+            safe_text = text.encode(enc, errors="replace").decode(enc)
+            self.err_stream.write(safe_text + "\n")
         self.err_stream.flush()
 
     def write_json(self, data: Any) -> None:

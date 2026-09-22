@@ -15,9 +15,9 @@ Usage:
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
 
 from channels.approval.auth import (
     ApproverAuthenticator,

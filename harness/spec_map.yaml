@@ -689,6 +689,101 @@ spec_map:
     roadmap_phase: 8
     evidence_state: "GATE_VERIFIED"
 
+  # -----------------------------------------------------------------------
+  # Phase 8.5 — Human Interaction Layer (CLI + Windows Application)
+  # -----------------------------------------------------------------------
+
+  - id: CLI-009
+    title: "Interactive CLI Shell Session"
+    architecture_section: "docs/Architecture §2, §4, ADR-0026, CONTRACT_MATRIX CLI-009"
+    acceptance_criterion: >
+      Invoking ryu in interactive TTY enters prompt session with history, dynamic attention banner, and status.
+    harness_case: "channels/tests/test_cli_shell.py"
+    roadmap_phase: 8.5
+    evidence_state: "GATE_VERIFIED"
+
+  - id: CLI-010
+    title: "CLI Command Palette & Tab-Completion"
+    architecture_section: "docs/Architecture §2, §4, CONTRACT_MATRIX CLI-010"
+    acceptance_criterion: >
+      Completer suggests commands, subcommands, and active approval IDs dynamically.
+    harness_case: "channels/tests/test_cli_shell.py"
+    roadmap_phase: 8.5
+    evidence_state: "GATE_VERIFIED"
+
+  - id: CLI-011
+    title: "Interactive Approver Secret Prompt"
+    architecture_section: "docs/Architecture §4, §16, ADR-0023, CONTRACT_MATRIX CLI-011"
+    acceptance_criterion: >
+      Interactive approval prompts for secret with un-echoed password entry, zero terminal leakage.
+    harness_case: "channels/tests/test_cli_shell.py"
+    roadmap_phase: 8.5
+    evidence_state: "GATE_VERIFIED"
+
+  - id: CLI-012
+    title: "Live Pulse Stream TUI"
+    architecture_section: "docs/Architecture §2, §16, CONTRACT_MATRIX CLI-012"
+    acceptance_criterion: >
+      ryu audit stream --follow tails pulse stream in real-time until interrupted.
+    harness_case: "channels/tests/test_cli_parsing.py"
+    roadmap_phase: 8.5
+    evidence_state: "GATE_VERIFIED"
+
+  - id: APP-001
+    title: "Tauri Desktop App Shell"
+    architecture_section: "docs/Architecture §2, ADR-0026, CONTRACT_MATRIX APP-001"
+    acceptance_criterion: >
+      Tauri desktop app structure with strict CSP and loopback IPC boundaries compiles and builds.
+    harness_case: "apps/ryu-desktop"
+    roadmap_phase: 8.5
+    evidence_state: "GATE_VERIFIED"
+
+  - id: APP-002
+    title: "Local Channel Daemon Loopback API"
+    architecture_section: "docs/Architecture §2, §4, ADR-0026, CONTRACT_MATRIX APP-002"
+    acceptance_criterion: >
+      Local daemon binds strictly to loopback, enforces bearer auth, and serves attention and approval endpoints.
+    harness_case: "channels/tests/test_daemon.py"
+    roadmap_phase: 8.5
+    evidence_state: "GATE_VERIFIED"
+
+  - id: APP-003
+    title: "Dynamic Attention Budget Visualization"
+    architecture_section: "docs/Architecture §4, §10, ADR-0025, CONTRACT_MATRIX APP-003"
+    acceptance_criterion: >
+      Daemon and UI dynamically resolve concurrency limit N from runtime AttentionBudget.
+    harness_case: "channels/tests/test_daemon.py"
+    roadmap_phase: 8.5
+    evidence_state: "GATE_VERIFIED"
+
+  - id: APP-004
+    title: "Human Gate Approval Surface"
+    architecture_section: "docs/Architecture §4, §16, ADR-0022, ADR-0026, CONTRACT_MATRIX APP-004"
+    acceptance_criterion: >
+      UI renders approval cards with cryptographic metadata and submits client-side signed decisions.
+    harness_case: "channels/tests/test_daemon.py"
+    roadmap_phase: 8.5
+    evidence_state: "GATE_VERIFIED"
+
+  - id: APP-005
+    title: "Timeline, Audit, & Replay Views"
+    architecture_section: "docs/Architecture §2, §16, CONTRACT_MATRIX APP-005"
+    acceptance_criterion: >
+      Live SSE stream and immutable audit query endpoints stream and format pulse records.
+    harness_case: "channels/tests/test_daemon.py"
+    roadmap_phase: 8.5
+    evidence_state: "GATE_VERIFIED"
+
+  - id: APP-006
+    title: "Raw Human Token Isolation"
+    architecture_section: "docs/Architecture §4, §16, ADR-0026, CONTRACT_MATRIX APP-006"
+    acceptance_criterion: >
+      Local Channel Daemon never persists, caches, logs, or serializes raw human approver secrets.
+    harness_case: "channels/tests/test_daemon.py"
+    roadmap_phase: 8.5
+    evidence_state: "GATE_VERIFIED"
+
+
 
 
 

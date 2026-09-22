@@ -145,3 +145,17 @@ def test_cli_approval_list(cli_ctx):
     assert len(data) == 1
     assert data[0]["request_id"] == "app-test-1"
 
+
+def test_cli_audit_stream_follow(cli_ctx, monkeypatch):
+    from unittest.mock import MagicMock
+    ctx, out, err, _ = cli_ctx
+    ctx.bus = MagicMock()
+
+    # Make queue get raise KeyboardInterrupt immediately
+    with monkeypatch.context() as m:
+        m.setattr("queue.Queue.get", MagicMock(side_effect=KeyboardInterrupt))
+        code = main(["audit", "stream", "--follow"], ctx=ctx)
+        assert code == EXIT_SUCCESS
+        assert "Stream stopped" in out.getvalue()
+
+

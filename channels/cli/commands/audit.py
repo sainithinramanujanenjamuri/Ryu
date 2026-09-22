@@ -21,6 +21,7 @@ def register_audit_parser(subparsers: argparse._SubParsersAction[Any]) -> None:
     stream_p.add_argument("--space-id", "-s", help="Filter by space ID")
     stream_p.add_argument("--type", "-t", help="Filter by pulse type prefix")
     stream_p.add_argument("--limit", "-l", type=int, default=50, help="Maximum number of pulses")
+    stream_p.add_argument("--follow", "-f", action="store_true", help="Continuously tail live pulse events")
     stream_p.set_defaults(handler=execute_audit_stream)
 
 
@@ -45,29 +46,67 @@ def execute_audit_stream(args: argparse.Namespace, ctx: CLIContext) -> int:
     if args.limit and len(pulses) > args.limit:
         pulses = pulses[-args.limit:]
 
-    if ctx.json_output:
+    if ctx.json_output and not args.follow:
         ctx.write_json(pulses)
         return 0
 
-    if not pulses:
+    headers = ["PULSE ID", "SPACE ID", "TYPE", "SEVERITY", "SOURCE", "TAINT"]
+    if pulses:
+        rows = []
+        for p in pulses:
+            p_id = p.id[:12] if len(p.id) > 12 else p.id
+            p_type = p.type[:28] if len(p.type) > 28 else p.type
+            sev_str = p.severity.value if hasattr(p.severity, "value") else str(p.severity)
+            rows.append([
+                p_id,
+                p.space_id,
+                p_type,
+                sev_str.upper(),
+                p.source,
+                color_taint(p.taint),
+            ])
+        ctx.write_out(format_table(headers, rows))
+    elif not args.follow:
         ctx.write_out("No audit pulses found matching criteria.")
         return 0
 
-    headers = ["PULSE ID", "SPACE ID", "TYPE", "SEVERITY", "SOURCE", "TAINT"]
-    rows = []
-    for p in pulses:
-        p_id = p.id[:12] if len(p.id) > 12 else p.id
-        p_type = p.type[:28] if len(p.type) > 28 else p.type
-        sev_str = p.severity.value if hasattr(p.severity, "value") else str(p.severity)
-        rows.append([
-            p_id,
-            p.space_id,
-            p_type,
-            sev_str.upper(),
-            p.source,
-            color_taint(p.taint),
-        ])
+    if args.follow:
+        ctx.write_out("\n--- Streaming live pulses (Ctrl+C to stop) ---")
+        import queue
+        import time
 
-    ctx.write_out(format_table(headers, rows))
+        event_q: queue.Queue[Any] = queue.Queue()
+
+        def on_pulse(p: Any) -> None:
+            if args.space_id and getattr(p, "space_id", None) != args.space_id:
+                return
+            if args.type and not getattr(p, "type", "").startswith(args.type):
+                return
+            event_q.put(p)
+
+        sub = None
+        if ctx.bus is not None and hasattr(ctx.bus, "subscribe"):
+            sub = ctx.bus.subscribe(on_pulse)
+
+        try:
+            while True:
+                try:
+                    p = event_q.get(timeout=0.5)
+                    p_id = p.id[:12] if len(p.id) > 12 else p.id
+                    p_type = p.type[:28] if len(p.type) > 28 else p.type
+                    sev_str = p.severity.value if hasattr(p.severity, "value") else str(p.severity)
+                    row = [p_id, p.space_id, p_type, sev_str.upper(), p.source, color_taint(p.taint)]
+                    ctx.write_out(f"{row[0]:<14} {row[1]:<12} {row[2]:<30} {row[3]:<10} {row[4]:<15} {row[5]}")
+                except queue.Empty:
+                    continue
+        except (KeyboardInterrupt, SystemExit):
+            ctx.write_out("\nStream stopped.")
+        finally:
+            if sub is not None and ctx.bus is not None and hasattr(ctx.bus, "unsubscribe"):
+                try:
+                    ctx.bus.unsubscribe(sub)
+                except Exception:
+                    pass
+
     return 0
 

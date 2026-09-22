@@ -11,6 +11,7 @@ from typing import NoReturn
 
 from channels.cli.commands.approval import register_approval_parser
 from channels.cli.commands.audit import register_audit_parser
+from channels.cli.commands.prompt import register_prompt_parser
 from channels.cli.commands.space import register_space_parser
 from channels.cli.commands.status import register_status_parser
 from channels.cli.commands.task import register_task_parser
@@ -49,8 +50,18 @@ def create_parser() -> argparse.ArgumentParser:
     register_approval_parser(subparsers)
     register_task_parser(subparsers)
     register_audit_parser(subparsers)
+    register_prompt_parser(subparsers)
+
+    shell_p = subparsers.add_parser("shell", help="Launch interactive developer shell")
+    shell_p.set_defaults(handler=lambda args, ctx: _launch_shell(ctx))
 
     return parser
+
+
+def _launch_shell(ctx: CLIContext) -> int:
+    from channels.cli.shell import RyuInteractiveShell
+    shell = RyuInteractiveShell(ctx=ctx)
+    return shell.run()
 
 
 def main(argv: list[str] | None = None, ctx: CLIContext | None = None) -> int:
@@ -61,6 +72,28 @@ def main(argv: list[str] | None = None, ctx: CLIContext | None = None) -> int:
     if "--json" in args_list:
         context.json_output = True
         args_list = [a for a in args_list if a != "--json"]
+
+    # If invoked with no arguments and stdin is a TTY, launch interactive shell
+    if len(args_list) == 0 and hasattr(context.in_stream, "isatty") and context.in_stream.isatty():
+        return _launch_shell(context)
+
+    # Normalize leading slash commands if passed directly via CLI
+    if len(args_list) > 0 and args_list[0].startswith("/"):
+        raw_slash = args_list[0].lower()
+        if raw_slash == "/status":
+            args_list = ["status"] + args_list[1:]
+        elif raw_slash in ("/space", "/spaces"):
+            args_list = ["space"] + (args_list[1:] if args_list[1:] else ["list"])
+        elif raw_slash in ("/approval", "/approvals"):
+            args_list = ["approval"] + (args_list[1:] if args_list[1:] else ["list"])
+        elif raw_slash in ("/task", "/tasks"):
+            args_list = ["task"] + (args_list[1:] if args_list[1:] else ["list"])
+        elif raw_slash in ("/stream", "/audit"):
+            args_list = ["audit", "stream"] + args_list[1:]
+        elif raw_slash == "/prompt":
+            args_list = ["prompt"] + args_list[1:]
+        elif raw_slash == "/help":
+            args_list = ["--help"]
 
     parser = create_parser()
     try:
