@@ -33,6 +33,7 @@ testpaths = [
     "workers/tests",
     "node/tests",
     "channels/tests",
+    "skills/tests",
     "harness/cases",
     "harness/cases/pulse_bus_integration",
 ]
@@ -61,5 +62,13 @@ module = [
     "harness.cases.*",
 ]
 disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = [
+    "jsonschema.*",
+    "psycopg2.*",
+    "redis.*",
+]
+ignore_missing_imports = true
 
 

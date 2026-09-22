@@ -783,6 +783,239 @@ spec_map:
     roadmap_phase: 8.5
     evidence_state: "GATE_VERIFIED"
 
+  # -----------------------------------------------------------------------
+  # Phase 9 — Skills & MCP Extensibility Layer (must PASS)
+  # -----------------------------------------------------------------------
+
+  - id: REG-001
+    title: "Cryptographic Skill Signature Verification"
+    architecture_section: "docs/Architecture §5, §16, ADR-0027"
+    acceptance_criterion: >
+      Skill registration requires valid cryptographic signature over (skill_id, version, content_hash, risk_tier, registered_by). Invalid signature rejected synchronously.
+    contract:
+      file: "skills/registry.py"
+      rule: "SignatureVerifier.verify() == True required for registration"
+    harness_case: "harness/cases/skills/test_skill_supply_chain.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+  - id: REG-002
+    title: "Tool Schema Validation at Registration"
+    architecture_section: "docs/Architecture §5, §16, ADR-0027"
+    acceptance_criterion: >
+      Tool and Skill registrations validate input/output schemas as valid JSON schemas.
+    contract:
+      file: "skills/contract.py"
+      rule: "validate_schema_payload enforces Draft-07/2020-12 valid schema"
+    harness_case: "harness/cases/skills/test_skill_supply_chain.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+  - id: REG-003
+    title: "SHA-256 Content Hash Binding"
+    architecture_section: "docs/Architecture §5, ADR-0027"
+    acceptance_criterion: >
+      Skill registration validates content_hash matches computed SHA-256 of payload; tampering rejected.
+    contract:
+      file: "skills/model.py"
+      rule: "compute_sha256_hash(payload) == skill.content_hash"
+    harness_case: "harness/cases/skills/test_skill_supply_chain.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+  - id: REG-004
+    title: "Immutable Risk Tier Binding"
+    architecture_section: "docs/Architecture §5, §10, ADR-0027"
+    acceptance_criterion: >
+      Risk tier (LOW | HIGH) is cryptographically bound into signature and cannot be mutated post-registration.
+    contract:
+      file: "skills/model.py"
+      rule: "RiskTier enum strictly LOW or HIGH, signature covers risk_tier"
+    harness_case: "harness/cases/skills/test_skill_supply_chain.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+  - id: REG-005
+    title: "Strict SemVer Pinning"
+    architecture_section: "docs/Architecture §5, ADR-0027"
+    acceptance_criterion: >
+      Skill resolution requires exact SemVer pinning (X.Y.Z); dynamic @latest or range matching is rejected.
+    contract:
+      file: "skills/registry.py"
+      rule: "SEMVER_REGEX match and exact lookup; @latest rejected"
+    harness_case: "harness/cases/skills/test_skill_supply_chain.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+  - id: REG-006
+    title: "MCP Tool Namespacing"
+    architecture_section: "docs/Architecture §5, ADR-0030"
+    acceptance_criterion: >
+      All tools discovered via MCP servers are namespaced under mcp.<server_id>.<tool_name> preventing collision.
+    contract:
+      file: "skills/mcp/discovery.py"
+      rule: "MCPDiscoveryService namespaces tool as f'mcp.{server_id}.{tool_name}'"
+    harness_case: "harness/cases/mcp/test_mcp_integration.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+  - id: SKILL-001
+    title: "Skill Zero Authority & Admission Delegation"
+    architecture_section: "docs/Architecture §5, Law 2, ADR-0028"
+    acceptance_criterion: >
+      Skills own zero execution authority. Every skill invocation delegates a CapabilityRequest to Space AdmissionController.
+    contract:
+      file: "skills/executor.py"
+      rule: "SkillExecutor routes capability check to AdmissionController before handler execution"
+    harness_case: "harness/cases/skills/test_skill_governance.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+  - id: SKILL-002
+    title: "Skill Contract Input & Output Schema Enforcement"
+    architecture_section: "docs/Architecture §5, §16, ADR-0028"
+    acceptance_criterion: >
+      Skill invocation parameters and return values must strictly satisfy registered JSON schemas.
+    contract:
+      file: "skills/contract.py"
+      rule: "validate_schema_payload raises terminal.schema_violation on schema divergence"
+    harness_case: "skills/tests/test_skill_execution.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+  - id: SKILL-003
+    title: "Skill Output Taint Marking"
+    architecture_section: "docs/Architecture §10, Law 4, ADR-0032"
+    acceptance_criterion: >
+      Skill and tool execution results are stamped with taint: True, preventing authority escalation.
+    contract:
+      file: "skills/contract.py"
+      rule: "SkillResponse.taint is True for all external tool executions"
+    harness_case: "harness/cases/skills/test_skill_governance.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+  - id: MCP-001
+    title: "JSON-RPC 2.0 Stdio Wire Protocol"
+    architecture_section: "docs/Architecture §5, ADR-0029"
+    acceptance_criterion: >
+      MCP client communicates over stdio subprocess pipes using conformant JSON-RPC 2.0 protocol.
+    contract:
+      file: "skills/mcp/protocol.py"
+      rule: "JSON-RPC 2.0 framing, request/response validation, error mapping"
+    harness_case: "harness/cases/mcp/test_mcp_integration.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+  - id: MCP-002
+    title: "MCP Controlled Tool Discovery"
+    architecture_section: "docs/Architecture §5, ADR-0030"
+    acceptance_criterion: >
+      MCP tools are discovered via tools/list handshake and registered into the ToolRegistry without granting execution authority.
+    contract:
+      file: "skills/mcp/discovery.py"
+      rule: "MCPDiscoveryService.discover_tools registers definitions under server namespace"
+    harness_case: "harness/cases/mcp/test_mcp_integration.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+  - id: MCP-003
+    title: "Sandboxed MCP Worker Execution & Pulses"
+    architecture_section: "docs/Architecture §5, §7, ADR-0029, ADR-0031"
+    acceptance_criterion: >
+      MCPWorker executes MCP tools in sandboxed subprocess and publishes worker.tool.called/succeeded/failed Pulses.
+    contract:
+      file: "workers/mcp/worker.py"
+      rule: "MCPWorker subclasses BaseWorker, executes tools/call, publishes typed pulses"
+    harness_case: "harness/cases/mcp/test_mcp_integration.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+  - id: SEC-MCP-001
+    title: "Admission Controller Bypass Prevention"
+    architecture_section: "docs/Architecture §4, §5, Law 2, ADR-0028"
+    acceptance_criterion: >
+      Attempt to execute high-risk or unadmitted capability through SkillExecutor is blocked pre-dispatch.
+    contract:
+      file: "skills/executor.py"
+      rule: "AdmissionController denial immediately yields status='denied', handler never runs"
+    harness_case: "harness/cases/mcp/test_mcp_security.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+  - id: SEC-MCP-002
+    title: "Prompt Injection Canary Protection"
+    architecture_section: "docs/Architecture §10, ADR-0032"
+    acceptance_criterion: >
+      Adversarial instruction injected in MCP tool output is treated strictly as passive data and remains tainted.
+    contract:
+      file: "workers/mcp/worker.py"
+      rule: "Worker outputs are passive data with taint: True, never parsed into executable commands"
+    harness_case: "harness/cases/mcp/test_mcp_security.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+  - id: SEC-MCP-005
+    title: "Cross-Space Execution Denial"
+    architecture_section: "docs/Architecture §3, §5, Law 1, ADR-0028"
+    acceptance_criterion: >
+      MCPWorker assigned to Space A rejects execution requests originating from Space B (cross-space execution denial).
+    contract:
+      file: "workers/base.py"
+      rule: "request.space_id != self.space_id returns status='denied' with terminal.permission_denied"
+    harness_case: "harness/cases/mcp/test_mcp_security.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+  - id: CHAOS-MCP-001
+    title: "Subprocess Crash Recovery and Cleanup"
+    architecture_section: "docs/Architecture §5, Law 6, ADR-0031"
+    acceptance_criterion: >
+      Server crash/abrupt exit during tool execution is trapped, reported as transient/terminal error, and resources cleaned up.
+    contract:
+      file: "skills/mcp/client.py"
+      rule: "MCPClient handles process exit, raises SkillError without leaving orphan processes"
+    harness_case: "harness/cases/mcp/test_mcp_chaos.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+  - id: CHAOS-MCP-002
+    title: "Subprocess Watchdog Timeout Enforcement"
+    architecture_section: "docs/Architecture §5, ADR-0031"
+    acceptance_criterion: >
+      Subprocess hanging or exceeding timeout is terminated by watchdog timer, returning transient.timeout.
+    contract:
+      file: "skills/mcp/client.py"
+      rule: "Watchdog timer kills hung process on timeout, returns transient.timeout error"
+    harness_case: "harness/cases/mcp/test_mcp_chaos.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+  - id: CHAOS-MCP-003
+    title: "Malformed JSON-RPC Protocol Error Containment"
+    architecture_section: "docs/Architecture §5, Law 6, ADR-0029"
+    acceptance_criterion: >
+      Malformed JSON or invalid JSON-RPC responses from server are contained without crashing the host runtime.
+    contract:
+      file: "skills/mcp/protocol.py"
+      rule: "Protocol parsing error maps to terminal.schema_violation / SkillError"
+    harness_case: "harness/cases/mcp/test_mcp_chaos.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+  - id: CHAOS-MCP-006
+    title: "Server Disconnect and Reconnect Resilience"
+    architecture_section: "docs/Architecture §5, ADR-0029"
+    acceptance_criterion: >
+      Server disconnect is cleanly detected, allowing subsequent reconnect without leaked file descriptors or corrupted state.
+    contract:
+      file: "skills/mcp/client.py"
+      rule: "MCPClient.close() and re-initialization clears stdio pipes cleanly"
+    harness_case: "harness/cases/mcp/test_mcp_chaos.py"
+    roadmap_phase: 9
+    evidence_state: "GATE_VERIFIED"
+
+
 
 
 
