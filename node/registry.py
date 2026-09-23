@@ -26,6 +26,7 @@ from node.contract import (
     NodeInfo,
     NodeRegistrationError,
     NodeState,
+    NodeTrustTier,
 )
 
 # Valid node ID pattern: alphanumeric, hyphen, underscore, 3-64 chars
@@ -101,6 +102,21 @@ class NodeRegistry:
         """Retrieve node info by node_id."""
         with self._lock:
             return self._nodes.get(node_id)
+
+    def list_nodes(self) -> list[NodeInfo]:
+        """List all registered nodes."""
+        with self._lock:
+            return list(self._nodes.values())
+
+    def list_nodes_by_platform(self, platform: str) -> list[NodeInfo]:
+        """List nodes matching a given platform name (e.g. 'windows', 'linux')."""
+        with self._lock:
+            return [n for n in self._nodes.values() if n.platform == platform]
+
+    def list_nodes_by_tier(self, tier: NodeTrustTier) -> list[NodeInfo]:
+        """List nodes matching a given trust tier."""
+        with self._lock:
+            return [n for n in self._nodes.values() if n.trust_tier == tier]
 
     def get_pairing_secret(self, node_id: str) -> str | None:
         """Retrieve paired secret for node (internal authorized use only)."""

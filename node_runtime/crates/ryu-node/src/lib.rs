@@ -1,13 +1,16 @@
 //! ryu-node: Physical Node Runtime Implementation
-//! Space-Centric Cognitive Architecture (SCCA) — Phase 7
+//! Space-Centric Cognitive Architecture (SCCA) — Phase 7 & Phase 11
+//! CONTRACT_MATRIX NODE-001..NODE-013, ADR-0017..ADR-0020, ADR-0037..ADR-0039
 
 pub mod audit;
 pub mod grant;
 pub mod platform;
+pub mod policy;
 
 use audit::DeviceAuditLogger;
 use grant::GrantVerifier;
 use platform::PlatformAdapter;
+pub use policy::{NodeTrustTier, RestrictedNodePolicy};
 use ryu_node_proto::{
     DeviceBindingRequest, DeviceBindingResponse, DeviceInfo, HealthReport, NodeCapabilityGrant, NodeInfo,
 };
@@ -25,6 +28,10 @@ pub struct NodeRuntime {
     pub active_bindings: HashMap<String, String>,
     /// Set of revoked revocation tokens
     pub revocations: Vec<String>,
+    /// Trust tier of this node (full_trust or restricted)
+    pub trust_tier: NodeTrustTier,
+    /// Local MDM policy constraint (if restricted tier)
+    pub policy: Option<RestrictedNodePolicy>,
 }
 
 impl NodeRuntime {
@@ -36,7 +43,15 @@ impl NodeRuntime {
             audit_logger,
             active_bindings: HashMap::new(),
             revocations: Vec::new(),
+            trust_tier: NodeTrustTier::FullTrust,
+            policy: None,
         })
+    }
+
+    pub fn with_policy(mut self, tier: NodeTrustTier, policy: Option<RestrictedNodePolicy>) -> Self {
+        self.trust_tier = tier;
+        self.policy = policy;
+        self
     }
 
     pub fn inspect(&self) -> NodeInfo {
@@ -51,6 +66,14 @@ impl NodeRuntime {
         GrantVerifier::validate_grant(grant, &self.node_id, &self.shared_secret, &self.revocations, current_time)
     }
 
+    /// Evaluates binding request according to the strict SCCA authorization order:
+    /// 1. Structural check
+    /// 2. Target node check
+    /// 3. Space membership check
+    /// 4. Cryptographic HMAC validation (validate_grant)
+    /// 5. MDM / Restricted-node local policy evaluation (MDM is an additional constraint, not authentication)
+    /// 6. Active lease & device binding
+    /// 7. Append-only audit record
     pub fn bind_device(&mut self, req: DeviceBindingRequest, current_time: &str) -> DeviceBindingResponse {
         // Check if binding already exists (idempotency repeat check)
         if let Some(existing_grant_id) = self.active_bindings.get(&req.binding_id) {
@@ -72,7 +95,7 @@ impl NodeRuntime {
             }
         }
 
-        // Validate grant
+        // 1-4. Validate grant (Node ID, Space, HMAC signature, Expiry, Revocations)
         if let Err(err_msg) = self.validate_grant(&req.grant, current_time) {
             let _ = self.audit_logger.append(
                 &self.node_id,
@@ -91,9 +114,34 @@ impl NodeRuntime {
             };
         }
 
-        // Record active binding
+        // 5. MDM / Restricted-node policy evaluation
+        // INVARIANT: MDM_ALLOW != Authentication. MDM is an additional local policy constraint.
+        if self.trust_tier == NodeTrustTier::Restricted {
+            if let Some(ref pol) = self.policy {
+                if let Err(pol_err) = pol.evaluate_capability(&req.grant.capability) {
+                    let _ = self.audit_logger.append(
+                        &self.node_id,
+                        &req.grant.space_id,
+                        "BIND_DENIED",
+                        &req.grant.grant_id,
+                        &req.device_id,
+                        &req.binding_id,
+                        &format!("DENIED: {}", pol_err),
+                        current_time,
+                    );
+                    return DeviceBindingResponse {
+                        bound: false,
+                        binding_id: req.binding_id,
+                        error: Some(pol_err),
+                    };
+                }
+            }
+        }
+
+        // 6. Record active binding
         self.active_bindings.insert(req.binding_id.clone(), req.grant.grant_id.clone());
 
+        // 7. Append to Audit Log
         let _ = self.audit_logger.append(
             &self.node_id,
             &req.grant.space_id,

@@ -335,3 +335,18 @@ class NodeCoordinator:
         """Retrieve task checkpoint."""
         with self._lock:
             return self._checkpoints.get(task_id)
+
+    def list_active_nodes(self) -> list[str]:
+        """List node_ids that have recorded heartbeats and are currently READY/ACTIVE."""
+        with self._lock:
+            res: list[str] = []
+            for node_id in self._last_heartbeat:
+                node = self.registry.get_node(node_id)
+                if node and node.runtime_state in (NodeState.READY, NodeState.ACTIVE):
+                    res.append(node_id)
+            return sorted(res)
+
+    def list_node_tasks(self, node_id: str) -> list[str]:
+        """List active task_ids assigned to a specific node."""
+        with self._lock:
+            return list(self._node_tasks.get(node_id, []))

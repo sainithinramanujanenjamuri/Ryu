@@ -171,8 +171,10 @@ class RustNodeBridge:
         audit_log_path: str | Path,
         req: dict[str, Any],
         current_time: str | None = None,
+        trust_tier: str = "full_trust",
+        policy: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Validate grant, bind device, and append to audit log via native runtime."""
+        """Validate grant, evaluate MDM policy if restricted, bind device, and append to audit log via native runtime."""
         args = [
             "--node-id",
             node_id,
@@ -182,7 +184,11 @@ class RustNodeBridge:
             str(audit_log_path),
             "--req",
             json.dumps(req),
+            "--trust-tier",
+            trust_tier,
         ]
+        if policy:
+            args.extend(["--policy", json.dumps(policy)])
         time_arg = current_time or datetime.now(timezone.utc).isoformat()
         args.extend(["--time", time_arg])
 

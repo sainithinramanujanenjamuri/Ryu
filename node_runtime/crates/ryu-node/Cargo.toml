@@ -5,6 +5,13 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+default = []
+macos = []
+android = []
+ios = []
+rpi_gpio = []
+
 [dependencies]
 ryu-node-proto = { path = "../ryu-node-proto" }
 serde = { version = "1.0", features = ["derive"] }

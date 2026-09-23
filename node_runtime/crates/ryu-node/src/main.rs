@@ -1,8 +1,9 @@
 //! ryu-node CLI binary: Physical Node Runtime boundary
-//! CONTRACT_MATRIX NODE-001, NODE-002, NODE-008 — Phase 7
+//! CONTRACT_MATRIX NODE-001, NODE-002, NODE-008, NODE-012 — Phase 7 & 11
 
 use ryu_node::audit::DeviceAuditLogger;
 use ryu_node::platform::PlatformAdapter;
+use ryu_node::policy::{NodeTrustTier, RestrictedNodePolicy};
 use ryu_node::NodeRuntime;
 use ryu_node_proto::{DeviceBindingRequest, NodeCapabilityGrant};
 use std::env;
@@ -13,7 +14,7 @@ fn print_usage() {
     eprintln!("  inspect --node-id <id>");
     eprintln!("  inspect-devices --node-id <id>");
     eprintln!("  validate-grant --node-id <id> --secret <key> --grant <json> [--time <iso>]");
-    eprintln!("  bind --node-id <id> --secret <key> --audit-log <path> --req <json> [--time <iso>]");
+    eprintln!("  bind --node-id <id> --secret <key> --audit-log <path> --req <json> [--trust-tier <tier>] [--policy <json>] [--time <iso>]");
     eprintln!("  release --node-id <id> --audit-log <path> --grant-id <id> --binding-id <id> [--time <iso>]");
     eprintln!("  health");
     eprintln!("  audit-verify --log-path <path>");
@@ -87,6 +88,8 @@ fn main() {
             let audit_log = get_arg(&args, "--audit-log").unwrap_or_else(|| "audit.log.jsonl".to_string());
             let req_json = get_arg(&args, "--req").unwrap_or_default();
             let current_time = get_arg(&args, "--time").unwrap_or_else(|| "2026-09-20T12:00:00Z".to_string());
+            let tier_str = get_arg(&args, "--trust-tier").unwrap_or_else(|| "full_trust".to_string());
+            let policy_json = get_arg(&args, "--policy");
 
             let req: DeviceBindingRequest = match serde_json::from_str(&req_json) {
                 Ok(r) => r,
@@ -117,6 +120,15 @@ fn main() {
                     return;
                 }
             };
+
+            let trust_tier = if tier_str == "restricted" {
+                NodeTrustTier::Restricted
+            } else {
+                NodeTrustTier::FullTrust
+            };
+
+            let policy: Option<RestrictedNodePolicy> = policy_json.and_then(|p| serde_json::from_str(&p).ok());
+            runtime = runtime.with_policy(trust_tier, policy);
 
             let resp = runtime.bind_device(req, &current_time);
             println!("{}", serde_json::to_string(&resp).unwrap());

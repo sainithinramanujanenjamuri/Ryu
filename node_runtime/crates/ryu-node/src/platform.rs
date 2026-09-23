@@ -1,5 +1,10 @@
 //! Platform-specific discovery and device inspection adapter.
-//! CONTRACT_MATRIX NODE-001, ADR-0020 — Phase 7
+//! CONTRACT_MATRIX NODE-001, NODE-009, NODE-013, ADR-0020, ADR-0037 — Phase 11
+//!
+//! Invariants:
+//! WSL2 != Native Linux Device.
+//! WSL2 provides Linux compatibility validation; bare-metal hardware independence requires native Linux.
+//! Feature compilation != platform support.
 
 use ryu_node_proto::{DeviceInfo, DeviceState, DeviceType, NodeInfo, NodeState};
 use std::collections::HashMap;
@@ -26,7 +31,15 @@ impl PlatformAdapter {
         } else if os_str == "windows" {
             "windows_host".to_string()
         } else {
-            "native_linux".to_string()
+            "linux_native".to_string()
+        };
+
+        let evidence_type = if is_wsl {
+            "Linux compatibility validation via WSL2".to_string()
+        } else if os_str == "windows" {
+            "Windows host".to_string()
+        } else {
+            "Native Linux host".to_string()
         };
 
         let cpu_cores = std::thread::available_parallelism()
@@ -46,6 +59,7 @@ impl PlatformAdapter {
         labels.insert("tier".to_string(), "physical".to_string());
         labels.insert("platform".to_string(), os_str.to_string());
         labels.insert("environment".to_string(), profile.clone());
+        labels.insert("evidence_type".to_string(), evidence_type);
 
         NodeInfo {
             node_id: node_id.to_string(),
@@ -60,6 +74,7 @@ impl PlatformAdapter {
                 "compute.cpu".to_string(),
                 "compute.gpu".to_string(),
                 "storage.workspace".to_string(),
+                "terminal.bash".to_string(),
             ],
             labels,
         }
@@ -114,5 +129,37 @@ impl PlatformAdapter {
         });
 
         devices
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Post-v1 Compile-Time Placeholder Stubs (Feature Gated)
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "macos")]
+pub mod macos_placeholder {
+    pub fn placeholder_info() -> &'static str {
+        "macos_feature_placeholder_compiled"
+    }
+}
+
+#[cfg(feature = "android")]
+pub mod android_placeholder {
+    pub fn placeholder_info() -> &'static str {
+        "android_feature_placeholder_compiled"
+    }
+}
+
+#[cfg(feature = "ios")]
+pub mod ios_placeholder {
+    pub fn placeholder_info() -> &'static str {
+        "ios_feature_placeholder_compiled"
+    }
+}
+
+#[cfg(feature = "rpi_gpio")]
+pub mod rpi_gpio_placeholder {
+    pub fn placeholder_info() -> &'static str {
+        "rpi_gpio_feature_placeholder_compiled"
     }
 }

@@ -1121,6 +1121,73 @@ spec_map:
     roadmap_phase: 10
     evidence_state: "GATE_VERIFIED"
 
+  # -----------------------------------------------------------------------
+  # Phase 11 — Multi-Platform Nodes
+  # -----------------------------------------------------------------------
+
+  - id: NODE-009
+    title: "Linux Platform Profile and WSL2 Compatibility Validation"
+    architecture_section: "docs/Architecture §11, CONTRACT_MATRIX §19, ADR-0037"
+    acceptance_criterion: >
+      Second platform profile (Linux) passes the entire Phase 7 contract suite.
+      WSL2 validation is explicitly distinguished from native Linux execution.
+    contract:
+      file: "node/platforms/linux.py"
+      rule: "LinuxHostProfile and WSL2Profile abstraction with strict evidence labeling"
+    harness_case: "harness/cases/node/test_node_linux_profile.py"
+    roadmap_phase: 11
+    evidence_state: "GATE_VERIFIED"
+
+  - id: NODE-010
+    title: "Multi-Node Concurrency in a Single Space"
+    architecture_section: "docs/Architecture §11, §16, CONTRACT_MATRIX §19, ADR-0038"
+    acceptance_criterion: >
+      One Space coordinates across multiple nodes concurrently with independent per-node leases and bindings.
+    contract:
+      file: "node/coordinator.py"
+      rule: "Multi-node independent heartbeat tracking, leasing, and execution routing"
+    harness_case: "harness/cases/node/test_multi_node_concurrency.py"
+    roadmap_phase: 11
+    evidence_state: "GATE_VERIFIED"
+
+  - id: NODE-011
+    title: "Per-Node Grant Isolation and Fault Containment"
+    architecture_section: "docs/Architecture §11, CONTRACT_MATRIX §19, ADR-0038"
+    acceptance_criterion: >
+      Revoking or disconnecting Node A does not interrupt Node B. Zero authority inheritance upon node failure.
+    contract:
+      file: "node/runtime.py"
+      rule: "Target node HMAC matching, independent task checkpoints, and isolated in-flight revocation"
+    harness_case: "harness/cases/node/test_multi_node_concurrency.py"
+    roadmap_phase: 11
+    evidence_state: "GATE_VERIFIED"
+
+  - id: NODE-012
+    title: "Restricted Node Tier MDM Capability Allow-Lists"
+    architecture_section: "docs/Architecture §11, CONTRACT_MATRIX §19, ADR-0039"
+    acceptance_criterion: >
+      Restricted nodes enforce local MDM allow-lists as an additional local constraint.
+      MDM_ALLOW is not authentication; MDM_DENY rejects even if Space Kernel signed the grant.
+    contract:
+      file: "node/policy/engine.py"
+      rule: "DevicePolicyEngine evaluates local capability allow-lists on Restricted nodes"
+    harness_case: "harness/cases/node/test_restricted_node_tier.py"
+    roadmap_phase: 11
+    evidence_state: "GATE_VERIFIED"
+
+  - id: NODE-013
+    title: "Post-v1 Platform Placeholders and Cargo Feature Flags"
+    architecture_section: "docs/Architecture §11, CONTRACT_MATRIX §19, ADR-0037"
+    acceptance_criterion: >
+      Post-v1 platforms (macOS, Android, iOS, Raspberry Pi) compile behind feature flags
+      without claiming platform support (compilation != support).
+    contract:
+      file: "node/platforms/stubs.py"
+      rule: "Platform stubs raise NotImplementedError and declare is_supported=False"
+    harness_case: "harness/cases/node/test_node_platform_stubs.py"
+    roadmap_phase: 11
+    evidence_state: "GATE_VERIFIED"
+
 
 
 

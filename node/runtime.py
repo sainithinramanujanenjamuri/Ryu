@@ -35,7 +35,10 @@ from node.contract import (
     GrantState,
     NodeError,
     NodeState,
+    NodeTrustTier,
+    RestrictedNodePolicy,
 )
+from node.policy.engine import DevicePolicyEngine
 from node.registry import NodeRegistry
 
 
@@ -61,6 +64,8 @@ class NodeRuntime:
         audit_log: DeviceAuditLog,
         bridge: RustNodeBridge | None = None,
         bus: PulseBus | None = None,
+        trust_tier: NodeTrustTier = NodeTrustTier.FULL_TRUST,
+        policy: RestrictedNodePolicy | None = None,
     ) -> None:
         self.node_id = node_id
         self.shared_secret = shared_secret
@@ -68,6 +73,8 @@ class NodeRuntime:
         self.audit_log = audit_log
         self.bridge = bridge
         self.bus = bus
+        self.trust_tier = trust_tier
+        self.policy = policy
 
         self._lock = threading.RLock()
         self._active_bindings: dict[str, DeviceBinding] = {}
@@ -236,7 +243,34 @@ class NodeRuntime:
                     f"Cryptographic signature verification failed for grant '{grant.grant_id}'."
                 )
 
-            # 10. Perform Binding
+            # 10. MDM / Restricted-Node Policy Evaluation
+            # INVARIANT: MDM_ALLOW != Authentication.
+            # MDM policy enforcement is an additional local policy constraint.
+            # MDM_ALLOW alone is NOT sufficient.
+            # valid_DeviceGrant alone is NOT sufficient on a Restricted node if MDM denies.
+            # MDM_DENY -> binding denied.
+            if node.trust_tier == NodeTrustTier.RESTRICTED or self.trust_tier == NodeTrustTier.RESTRICTED:
+                effective_policy = self.policy or node.policy
+                permitted, reason = DevicePolicyEngine.evaluate(
+                    trust_tier=NodeTrustTier.RESTRICTED,
+                    policy=effective_policy,
+                    capability=grant.capability,
+                )
+                if not permitted:
+                    self._record_audit(
+                        space_id=space_id,
+                        event_type="BIND_DENIED",
+                        grant_id=grant.grant_id,
+                        device_id=device_id,
+                        op_id="bind",
+                        result=f"DENIED: MDM policy restriction ({reason})",
+                        timestamp=now_iso,
+                    )
+                    raise GrantInvalidError(
+                        f"MDM policy violation on node '{self.node_id}': {reason}"
+                    )
+
+            # 11. Perform Binding
             binding_id = f"bind-{uuid.uuid4().hex[:12]}"
             binding = DeviceBinding(
                 binding_id=binding_id,

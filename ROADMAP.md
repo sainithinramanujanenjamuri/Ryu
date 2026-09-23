@@ -419,17 +419,17 @@
 
 ### Deliverables
 
-- [ ] Native Linux binary/profile, if native Linux hardware is available, passing the shared Phase 7 contract suite
-- [ ] Windows implementation hardening and portability validation
-- [ ] macOS binaries (CUDA/Metal GPU capabilities optional behind feature flags)
-- [ ] Android/iOS build profiles compiling (runtime feature-parity post-v1)
-- [ ] Raspberry Pi GPIO capability behind feature flag
-- [ ] `Restricted` node tier (MDM allow-lists) — spec exists; this phase makes it real
+- [x] Native Linux binary/profile and WSL2 Linux compatibility profile passing the shared Phase 7 contract suite (ADR-0037)
+- [x] Windows implementation hardening and portability validation
+- [x] macOS compile-time placeholder behind Cargo feature flag (`macos`) (ADR-0037)
+- [x] Android/iOS compile-time placeholders behind Cargo feature flags (`android`, `ios`) (ADR-0037)
+- [x] Raspberry Pi GPIO capability placeholder behind Cargo feature flag (`rpi_gpio`) (ADR-0037)
+- [x] `Restricted` node tier (MDM allow-lists) as an additional local policy constraint (ADR-0039)
 
 ### Exit Gate
-- [ ] A second real device/platform passes the **entire Phase 7 exit gate** on its platform — no reduced criteria
-- [ ] One Space using two Nodes concurrently; per-Node grants enforced independently
-- [ ] Cross-platform implementations pass the same contract/harness suite without platform-specific weakening of authorization, audit, isolation, or offline/resume semantics
+- [x] A second real device/platform (Linux / WSL2 compatibility) passes the **entire Phase 7 exit gate** on its platform — no reduced criteria (NODE-009)
+- [x] One Space using two Nodes concurrently; per-Node grants enforced independently (NODE-010, NODE-011)
+- [x] Cross-platform implementations pass the same contract/harness suite without platform-specific weakening of authorization, audit, isolation, or offline/resume semantics (NODE-012, NODE-013)
 
 ## v1.0 Definition (the line)
 

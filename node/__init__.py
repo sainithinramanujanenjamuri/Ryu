@@ -32,6 +32,8 @@ from node.contract import (
     NodeOfflineError,
     NodeRegistrationError,
     NodeState,
+    NodeTrustTier,
+    RestrictedNodePolicy,
     RiskTier,
     RustBridgeError,
     compute_grant_signature,
@@ -39,6 +41,14 @@ from node.contract import (
 )
 from node.coordinator import NodeCoordinator, TaskCheckpoint
 from node.grants import DeviceGrantManager
+from node.platforms import (
+    LinuxHostProfile,
+    NodePlatformProfile,
+    WSL2Profile,
+    WindowsHostProfile,
+    get_current_platform_profile,
+)
+from node.policy import DevicePolicyEngine
 from node.registry import NodeRegistry
 from node.runtime import NodeRuntime
 
@@ -53,6 +63,7 @@ __all__ = [
     "DeviceGrantManager",
     "DeviceInfo",
     "DeviceNotFoundError",
+    "DevicePolicyEngine",
     "DeviceState",
     "DeviceType",
     "DeviceUnavailableError",
@@ -63,19 +74,26 @@ __all__ = [
     "GrantState",
     "LeaseInvalidError",
     "LeaseNotFoundError",
+    "LinuxHostProfile",
     "NodeCoordinator",
     "NodeError",
     "NodeHealthReport",
     "NodeInfo",
     "NodeOfflineError",
+    "NodePlatformProfile",
     "NodeRegistrationError",
     "NodeRegistry",
     "NodeRuntime",
     "NodeState",
+    "NodeTrustTier",
+    "RestrictedNodePolicy",
     "RiskTier",
     "RustBridgeError",
     "RustNodeBridge",
     "TaskCheckpoint",
+    "WSL2Profile",
+    "WindowsHostProfile",
     "compute_grant_signature",
+    "get_current_platform_profile",
     "verify_grant_signature",
 ]

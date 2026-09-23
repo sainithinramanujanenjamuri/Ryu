@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
+from node.policy.models import NodeTrustTier, RestrictedNodePolicy
+
 
 class RiskTier(str, Enum):
     """Capability risk tier classification."""
@@ -161,6 +163,8 @@ class NodeInfo:
     storage_total_bytes: int = 0
     capabilities: list[str] = field(default_factory=list)
     labels: dict[str, str] = field(default_factory=dict)
+    trust_tier: NodeTrustTier = NodeTrustTier.FULL_TRUST
+    policy: RestrictedNodePolicy | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -174,10 +178,14 @@ class NodeInfo:
             "storage_total_bytes": self.storage_total_bytes,
             "capabilities": list(self.capabilities),
             "labels": dict(self.labels),
+            "trust_tier": self.trust_tier.value,
+            "policy": self.policy.to_dict() if self.policy else None,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> NodeInfo:
+        policy_data = data.get("policy")
+        policy = RestrictedNodePolicy.from_dict(policy_data) if policy_data else None
         return cls(
             node_id=data["node_id"],
             platform=data["platform"],
@@ -189,6 +197,8 @@ class NodeInfo:
             storage_total_bytes=data.get("storage_total_bytes", 0),
             capabilities=list(data.get("capabilities", [])),
             labels=dict(data.get("labels", {})),
+            trust_tier=NodeTrustTier(data.get("trust_tier", NodeTrustTier.FULL_TRUST.value)),
+            policy=policy,
         )
 
 
