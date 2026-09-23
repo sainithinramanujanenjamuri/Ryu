@@ -12,6 +12,7 @@ from typing import Any, Protocol
 from ryu.pulse_bus.pulse import Pulse, Severity
 
 from core.plans.delta import PlanDelta
+from core.space.memory_protocol import ExperienceRecord, SpaceMemoryProtocol
 
 
 class PulsePublisher(Protocol):
@@ -27,9 +28,15 @@ class Adapter:
     - Formats experience records with required counterfactual fields (§16).
     """
 
-    def __init__(self, space_id: str, bus: PulsePublisher | None = None) -> None:
+    def __init__(
+        self,
+        space_id: str,
+        bus: PulsePublisher | None = None,
+        memory_store: SpaceMemoryProtocol | None = None,
+    ) -> None:
         self.space_id = space_id
         self.bus = bus
+        self.memory_store = memory_store
 
     def propose_reassignment(
         self,
@@ -119,6 +126,19 @@ class Adapter:
             "applicable_context": applicable_context or {},
             "stored_at": now.isoformat(),
         }
+
+        if self.memory_store is not None:
+            record = ExperienceRecord(
+                experience_id=exp_id,
+                space_id=self.space_id,
+                situation=situation,
+                action=action,
+                outcome=outcome,
+                counterfactual=counterfactual,
+                applicable_context=applicable_context or {},
+                stored_at=now,
+            )
+            self.memory_store.store_experience(record)
 
         if self.bus is not None:
             pulse = Pulse(

@@ -13,6 +13,7 @@ from typing import Any, Protocol
 
 from ryu.pulse_bus.pulse import Pulse, Severity
 
+from core.memory.adaptation import AdaptationLayer
 from core.orchestrator.adapter import Adapter
 from core.orchestrator.goal_analyzer import Command, GoalAnalyzer, GoalSpec
 from core.orchestrator.monitor import Monitor
@@ -24,6 +25,7 @@ from core.plans.task_graph import TaskGraph
 from core.resources.identity import ResourceIdentity
 from core.resources.manager import ResourceAcquisitionResult, ResourceManager
 from core.space.kernel import SpaceKernel
+from core.space.memory_protocol import SpaceMemoryProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -71,11 +73,15 @@ class SpaceOrchestrator:
         kernel: SpaceKernel,
         resource_mgr: ResourceManager,
         bus: SubscribableBus,
+        memory_store: SpaceMemoryProtocol | None = None,
+        adaptation_layer: AdaptationLayer | None = None,
     ) -> None:
         self.space_id = space_id
         self.kernel = kernel
         self.resource_mgr = resource_mgr
         self.bus = bus
+        self.memory_store = memory_store
+        self.adaptation_layer = adaptation_layer
 
         # Verify Space alignment
         if kernel.space_id != space_id:
@@ -88,7 +94,9 @@ class SpaceOrchestrator:
         self.planner = Planner()
         self.team_builder = TeamBuilder(bus=self.bus)
         self.monitor = Monitor(space_id=space_id)
-        self.adapter = Adapter(space_id=space_id, bus=self.bus)
+        self.adapter = Adapter(
+            space_id=space_id, bus=self.bus, memory_store=self.memory_store
+        )
         self.reconciler = PlanReconciler(
             space_id=space_id,
             monitor=self.monitor,
@@ -124,6 +132,29 @@ class SpaceOrchestrator:
 
             # 3. Goal Analysis (Pure transformation -> goal.defined)
             goal_spec = self.goal_analyzer.analyze_goal(command)
+
+            # 3.5. Behavioral Adaptation (Law 4, MEM-004, ADR-0036)
+            if self.adaptation_layer is not None:
+                situation_hint = {
+                    "objective": goal_spec.objective,
+                    "capabilities": goal_spec.required_capabilities,
+                }
+                hints = self.adaptation_layer.generate_hints(
+                    self.space_id, situation_hint
+                )
+                if hints:
+                    updated_meta = dict(goal_spec.metadata)
+                    updated_meta["experience_hints"] = hints
+                    goal_spec = GoalSpec(
+                        goal_id=goal_spec.goal_id,
+                        space_id=goal_spec.space_id,
+                        objective=goal_spec.objective,
+                        constraints=goal_spec.constraints,
+                        required_capabilities=goal_spec.required_capabilities,
+                        single_agent_eligible=goal_spec.single_agent_eligible,
+                        command_id=goal_spec.command_id,
+                        metadata=updated_meta,
+                    )
 
             # 4. Planning (Proposed DAG -> uncommitted)
             proposed_plan = self.planner.plan_goal(goal_spec)

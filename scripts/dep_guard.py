@@ -31,6 +31,7 @@ FORBIDDEN_PREFIXES = (
     "workflows",
     "llm",
     "channels",
+    "memory",
     "click",
     "typer",
     "openai",
@@ -40,7 +41,7 @@ FORBIDDEN_PREFIXES = (
 )
 
 BOUNDARY_DESCRIPTION = (
-    "core/ MUST NOT import agents/, workers/, skills/, workflows/, llm/, channels/, or CLI/LLM SDKs"
+    "core/ MUST NOT import agents/, workers/, skills/, workflows/, llm/, channels/, memory/, or CLI/LLM SDKs"
 )
 
 

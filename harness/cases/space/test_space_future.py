@@ -68,4 +68,27 @@ def test_space_agent_isolation() -> None:
 
 
 def test_space_artifact_isolation() -> None:
-    pytest.skip("spec §4, SPACE-004 — Phase 10: Space Memory not implemented.")
+    """SPACE-004: Artifacts and Space Memory records remain strictly scoped to their owning Space."""
+    from datetime import datetime, timezone
+
+    from core.space.memory_protocol import ExperienceRecord
+    from memory.adapters.in_memory import InMemoryMemoryAdapter
+
+    store = InMemoryMemoryAdapter()
+    rec_a = ExperienceRecord(
+        experience_id="art-exp-a",
+        space_id="space-A",
+        situation={"artifact": "data-a.csv"},
+        action={"capability": "fs.write"},
+        outcome="Generated artifact",
+        counterfactual="Store artifact in space-A memory",
+        applicable_context={"artifact_id": "art-A"},
+        stored_at=datetime.now(timezone.utc),
+    )
+    store.store_experience(rec_a)
+
+    # Space B cannot retrieve Space A's artifact experience
+    assert store.get_experience("space-B", "art-exp-a") is None
+    # Space B's list does not leak Space A's artifacts
+    assert len(store.list_experiences("space-B")) == 0
+    assert len(store.list_experiences("space-A")) == 1

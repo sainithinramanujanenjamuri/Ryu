@@ -1015,6 +1015,112 @@ spec_map:
     roadmap_phase: 9
     evidence_state: "GATE_VERIFIED"
 
+  # ==============================================================================
+  # Phase 10 — Memory Adapters + Adaptation Loop
+  # ==============================================================================
+
+  - id: MEM-001
+    title: "Space-Local Memory Isolation"
+    architecture_section: "docs/Architecture §4, CONTRACT_MATRIX §21, ADR-0033"
+    acceptance_criterion: >
+      Knowledge begins in the owning Space (Law 4). A Space caller cannot retrieve or query
+      another Space's experiences.
+    contract:
+      file: "core/space/memory_protocol.py"
+      rule: "SpaceMemoryProtocol.get_experience / list_experiences strictly scoped to space_id"
+    harness_case: "harness/cases/memory/test_space_memory_isolation.py"
+    roadmap_phase: 10
+    evidence_state: "GATE_VERIFIED"
+
+  - id: MEM-002
+    title: "Experience Schema and Counterfactual Enforcement"
+    architecture_section: "docs/Architecture §4, §16, CONTRACT_MATRIX §21, ADR-0034"
+    acceptance_criterion: >
+      The Reflector cannot store an Experience record without situation, action, outcome,
+      counterfactual, applicable_context, and stored_at. Records lacking counterfactual are rejected.
+    contract:
+      file: "contracts/registry/payload-schemas/experience.stored.json"
+      rule: "experience.stored schema requires counterfactual and all 6 core fields"
+    harness_case: "harness/cases/memory/test_experience_schema.py"
+    roadmap_phase: 10
+    evidence_state: "GATE_VERIFIED"
+
+  - id: MEM-003
+    title: "Experience Persistence Round-Trip"
+    architecture_section: "docs/Architecture §4, CONTRACT_MATRIX §21, ADR-0033"
+    acceptance_criterion: >
+      Experience survives storage round-trip with all 6 mandatory fields intact across memory stores.
+    contract:
+      file: "core/space/memory_protocol.py"
+      rule: "SpaceMemoryProtocol.store_experience and get_experience preserve all record fields"
+    harness_case: "harness/cases/memory/test_experience_persistence.py"
+    roadmap_phase: 10
+    evidence_state: "GATE_VERIFIED"
+
+  - id: MEM-004
+    title: "Actionable Learning via Frozen Trace Benchmark"
+    architecture_section: "docs/Architecture §7, CONTRACT_MATRIX §21, ADR-0036"
+    acceptance_criterion: >
+      A recorded failure causes a measurable, eval-backed plan change on a repeated similar task,
+      evaluated against frozen reference traces.
+    contract:
+      file: "core/memory/adaptation.py"
+      rule: "AdaptationLayer produces contextual hints that Planner uses to adapt capabilities"
+    harness_case: "harness/cases/memory/test_adaptation_loop.py"
+    roadmap_phase: 10
+    evidence_state: "GATE_VERIFIED"
+
+  - id: MEM-005
+    title: "Cross-Space Promotion Gate and Forgery Resistance"
+    architecture_section: "docs/Architecture §4, §7, CONTRACT_MATRIX §21, ADR-0035"
+    acceptance_criterion: >
+      Global knowledge requires explicit promotion behind EvaluationModule and Human Gate.
+      Type-valid but unauthorized or forged knowledge.promotion.approved pulses are audited and rejected.
+    contract:
+      file: "memory/promotion.py"
+      rule: "PromotionPipeline verifies capability token, hash integrity, and rejects out-of-band approvals"
+    harness_case: "harness/cases/memory/test_promotion_pipeline.py"
+    roadmap_phase: 10
+    evidence_state: "GATE_VERIFIED"
+
+  - id: MEM-006
+    title: "Human Approval Authentication for Promotion"
+    architecture_section: "docs/Architecture §4, §16, CONTRACT_MATRIX §21, ADR-0035"
+    acceptance_criterion: >
+      Promotion approval carries authenticated approver_id resolved through SpaceKernel.approval_mgr.
+      Unauthenticated or unauthorized approvers are rejected.
+    contract:
+      file: "core/space/approver.py"
+      rule: "ApprovalManager validates approver identity and generates cryptographic decision_signature"
+    harness_case: "harness/cases/memory/test_promotion_pipeline.py"
+    roadmap_phase: 10
+    evidence_state: "GATE_VERIFIED"
+
+  - id: ARC-004
+    title: "Law 4: Knowledge Belongs to the Space First"
+    architecture_section: "docs/Architecture Law 4, CONTRACT_MATRIX §2, ADR-0033"
+    acceptance_criterion: >
+      Knowledge is Space-local by default. Cross-Space promotion requires the defined
+      promotion mechanism and authorization.
+    contract:
+      file: "core/space/memory_protocol.py"
+      rule: "No global knowledge exists without PromotionAuthorization"
+    harness_case: "harness/cases/memory/test_space_memory_isolation.py"
+    roadmap_phase: 10
+    evidence_state: "GATE_VERIFIED"
+
+  - id: SPACE-004
+    title: "Artifact and Memory Space Isolation"
+    architecture_section: "docs/Architecture §4, CONTRACT_MATRIX §7, ADR-0033"
+    acceptance_criterion: >
+      Artifacts and Space Memory records remain strictly scoped to their owning Space.
+    contract:
+      file: "core/space/memory_protocol.py"
+      rule: "Artifact and experience records cannot be read across space boundaries"
+    harness_case: "harness/cases/space/test_space_future.py"
+    roadmap_phase: 10
+    evidence_state: "GATE_VERIFIED"
+
 
 
 

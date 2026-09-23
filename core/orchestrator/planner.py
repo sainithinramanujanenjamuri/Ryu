@@ -37,12 +37,24 @@ class Planner:
         """Construct a proposed TaskGraph for a GoalSpec."""
         nodes: list[TaskNode] = []
 
+        # Check experience hints for behavioral adaptation (MEM-004, ADR-0036)
+        experience_hints = goal_spec.metadata.get("experience_hints", [])
+        avoid_capabilities: set[str] = set()
+        for h in experience_hints:
+            failed_cap = getattr(h, "failed_capability", None) or (
+                h.get("failed_capability") if isinstance(h, dict) else None
+            )
+            if failed_cap:
+                avoid_capabilities.add(failed_cap)
+
         # If explicit steps provided in metadata, use them
         explicit_steps = goal_spec.metadata.get("steps")
         if explicit_steps and isinstance(explicit_steps, list):
             for idx, step in enumerate(explicit_steps):
                 step_id = step.get("id", f"task-{idx + 1}")
                 cap = step.get("capability", "general.compute")
+                if cap in avoid_capabilities:
+                    cap = step.get("fallback_capability") or f"{cap}.compensated"
                 optional = bool(step.get("optional", False))
                 params = dict(step.get("params", {}))
                 nodes.append(
@@ -61,6 +73,17 @@ class Planner:
                 if goal_spec.required_capabilities
                 else "general.compute"
             )
+            if cap in avoid_capabilities:
+                alt = goal_spec.metadata.get("alternative_capability")
+                cap = (
+                    alt
+                    if alt
+                    else (
+                        goal_spec.required_capabilities[1]
+                        if len(goal_spec.required_capabilities) > 1
+                        else f"{cap}.fallback"
+                    )
+                )
             nodes.append(
                 TaskNode(
                     id=f"task-single-{goal_spec.goal_id}",
@@ -73,6 +96,9 @@ class Planner:
         else:
             # Multi-node graph mapped to required capabilities
             for idx, cap in enumerate(goal_spec.required_capabilities):
+                if cap in avoid_capabilities:
+                    alt = goal_spec.metadata.get("alternative_capability")
+                    cap = alt if alt else f"{cap}.compensated"
                 node_id = f"task-{idx + 1}-{cap.replace('.', '-')}"
                 # Mark later analysis/reporting nodes as optional for degraded mode testing
                 is_optional = "report" in cap or "metrics" in cap
@@ -96,5 +122,8 @@ class Planner:
             space_id=goal_spec.space_id,
             proposed_version=1,
             task_graph=task_graph,
-            metadata={"goal_id": goal_spec.goal_id},
+            metadata={
+                "goal_id": goal_spec.goal_id,
+                "applied_hints_count": len(avoid_capabilities),
+            },
         )

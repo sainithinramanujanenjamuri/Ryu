@@ -8,6 +8,7 @@ dependencies = []
 
 [project.optional-dependencies]
 durable = ["psycopg2-binary>=2.9", "redis>=5.0"]
+memory = ["qdrant-client>=1.7", "neo4j>=5.0", "boto3>=1.34"]
 dev = ["pytest>=7.0", "jsonschema>=4.21", "hypothesis>=6.0"]
 integration = ["psycopg2-binary>=2.9", "redis>=5.0", "pytest>=7.0", "hypothesis>=6.0"]
 
@@ -34,6 +35,7 @@ testpaths = [
     "node/tests",
     "channels/tests",
     "skills/tests",
+    "memory/tests",
     "harness/cases",
     "harness/cases/pulse_bus_integration",
 ]
@@ -68,6 +70,10 @@ module = [
     "jsonschema.*",
     "psycopg2.*",
     "redis.*",
+    "qdrant_client.*",
+    "neo4j.*",
+    "boto3.*",
+    "botocore.*",
 ]
 ignore_missing_imports = true
 
