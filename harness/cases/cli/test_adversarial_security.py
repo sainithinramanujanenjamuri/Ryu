@@ -586,7 +586,7 @@ def test_sec_20_piped_cli_input_tagged_tainted():
 )
 def test_sec_21_database_pulse_immutability():
     import psycopg2
-    cfg = PostgresConfig()
+    cfg = PostgresConfig.from_env()
     conn = psycopg2.connect(
         host=cfg.host, port=cfg.port, dbname=cfg.db, user=cfg.user, password=cfg.password
     )

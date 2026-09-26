@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RYU AI — v1.0 Final Release & Operational Verification Report</title>
+    <style>
+        :root {
+            --bg: #090d16;
+            --surface: #101623;
+            --surface-border: #1e293b;
+            --text: #f1f5f9;
+            --text-muted: #94a3b8;
+            --gold: #f59e0b;
+            --cyan: #06b6d4;
+            --green: #10b981;
+            --red: #ef4444;
+            --purple: #a855f7;
+            --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: var(--font);
+            line-height: 1.6;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        .header {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(6, 182, 212, 0.12));
+            border: 1px solid var(--surface-border);
+            border-radius: 12px;
+            padding: 36px;
+            margin-bottom: 30px;
+            position: relative;
+        }
+        .badge {
+            display: inline-block;
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--green);
+            border: 1px solid var(--green);
+            padding: 5px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            letter-spacing: 0.5px;
+        }
+        h1 {
+            font-size: 30px;
+            font-weight: 800;
+            color: #fff;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+        .meta {
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+        .actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            background: var(--surface);
+            border: 1px solid var(--surface-border);
+            color: var(--text);
+            padding: 10px 18px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn:hover {
+            border-color: var(--gold);
+            color: var(--gold);
+        }
+        .btn-primary {
+            background: var(--gold);
+            border-color: var(--gold);
+            color: #090d16;
+        }
+        .btn-primary:hover {
+            background: #d97706;
+            color: #090d16;
+        }
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--surface-border);
+            border-radius: 10px;
+            padding: 28px;
+            margin-bottom: 28px;
+        }
+        h2 {
+            font-size: 20px;
+            color: var(--gold);
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--surface-border);
+            padding-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        h3 {
+            font-size: 16px;
+            color: var(--cyan);
+            margin: 20px 0 10px 0;
+        }
+        p { margin-bottom: 12px; color: #cbd5e1; font-size: 14px; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            margin: 16px 0;
+        }
+        th, td {
+            padding: 12px 14px;
+            text-align: left;
+            border-bottom: 1px solid var(--surface-border);
+        }
+        th {
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+        .pass-tag {
+            color: var(--green);
+            font-weight: 700;
+            background: rgba(16, 185, 129, 0.15);
+            padding: 3px 8px;
+            border-radius: 4px;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        .grid-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+        .stat-box {
+            background: var(--surface);
+            border: 1px solid var(--surface-border);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+        .stat-num {
+            font-size: 34px;
+            font-weight: 800;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        pre {
+            background: #050811;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid var(--surface-border);
+            color: #38bdf8;
+            font-size: 13px;
+            overflow-x: auto;
+            margin: 14px 0;
+            font-family: 'Consolas', 'Courier New', monospace;
+        }
+        code {
+            background: rgba(255, 255, 255, 0.08);
+            color: #f8fafc;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-family: 'Consolas', monospace;
+        }
+        ol, ul {
+            margin: 12px 0 16px 24px;
+            color: #cbd5e1;
+            font-size: 14px;
+        }
+        li { margin-bottom: 8px; }
+        .law-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--surface-border);
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin-bottom: 10px;
+        }
+        .law-title {
+            font-weight: 700;
+            color: var(--cyan);
+            margin-bottom: 4px;
+        }
+        @media print {
+            body { background: #fff; color: #000; padding: 0; }
+            .header, .card, .stat-box { border: 1px solid #ccc; background: #fff; color: #000; }
+            h1, h2, h3, .stat-num { color: #000; }
+            p, ul, ol, td { color: #222; }
+            .actions { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <span class="badge">&#x2714; RYU AI v1.0 RELEASE VERIFIED (GATE: PASS)</span>
+            <h1>RYU AI — v1.0 Final Release & Operational Verification Report</h1>
+            <p class="meta">Architecture: Space-Centric Cognitive Architecture (SCCA) &bull; Verified: 2026-09-24 &bull; Status: Production Ready</p>
+            <div class="actions">
+                <button class="btn btn-primary" onclick="window.print()">🖨️ Print / Save as PDF</button>
+                <a class="btn" href="ryu_site.html" target="_blank">🌐 Open Ryu AI Website</a>
+                <a class="btn" href="launch_ryu.bat">🚀 Launch Desktop App</a>
+            </div>
+        </div>
+
+        <div class="grid-stats">
+            <div class="stat-box">
+                <div class="stat-num" style="color: var(--green);">649 / 650</div>
+                <div class="stat-label">Automated Tests Passed (0 Fail)</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-num" style="color: var(--cyan);">100%</div>
+                <div class="stat-label">Core AST Independence</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-num" style="color: var(--gold);">6 / 6</div>
+                <div class="stat-label">Master Release Criteria Green</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-num" style="color: var(--purple);">39</div>
+                <div class="stat-label">Architecture Decision Records</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>1. The Six Architectural Laws of SCCA</h2>
+            <div class="law-item">
+                <div class="law-title">Law 1 — Everything Happens Inside a Space</div>
+                <p>Space is the primary isolation and authority boundary. No memory, artifact, task, or agent operates outside a space.</p>
+            </div>
+            <div class="law-item">
+                <div class="law-title">Law 2 — Capabilities Are Requested, Never Owned</div>
+                <p>Agents and workers do not inherently own capabilities. Every operation requires dynamic admission control and capability gating.</p>
+            </div>
+            <div class="law-item">
+                <div class="law-title">Law 3 — Components Communicate Through Pulses</div>
+                <p>Zero hidden communication paths or ambient shared state. All inter-component interaction is mediated through typed, schema-validated pulses.</p>
+            </div>
+            <div class="law-item">
+                <div class="law-title">Law 4 — Knowledge Belongs to the Space First</div>
+                <p>Knowledge is space-local by default. Cross-space promotion requires explicit cryptographic authorization and human oversight.</p>
+            </div>
+            <div class="law-item">
+                <div class="law-title">Law 5 — Humans Define Goals, Ryu Organizes Execution</div>
+                <p>Human intent governs goals; Ryu organizes planning, assignment, execution, monitoring, and adaptation without silently redefining goals.</p>
+            </div>
+            <div class="law-item">
+                <div class="law-title">Law 6 — Failures Are Contained, Escalated, and Never Silent</div>
+                <p>Tool and worker failures remain within their originating scope and are surfaced up the chain. Swallowing errors is strictly prohibited.</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>2. Master v1.0 Release Gate Verification Results</h2>
+            <p>Evaluated under strict Boolean AND logic via <code>scripts/v1_release_gate.py</code> with real PostgreSQL 16 and Redis 7 persistence:</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Gate Code</th>
+                        <th>Verification Criterion</th>
+                        <th>Status</th>
+                        <th>Evidence & Metrics Verified</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>V1-001</strong></td>
+                        <td>Dynamic Spec Coverage Audit</td>
+                        <td><span class="pass-tag">PASS</span></td>
+                        <td><strong>141</strong> architecture criteria, <strong>177</strong> contract IDs, <strong>157</strong> executable spec mappings, <strong>0</strong> orphans, <strong>0</strong> missing tests</td>
+                    </tr>
+                    <tr>
+                        <td><strong>V1-002</strong></td>
+                        <td>Core Independence Proof</td>
+                        <td><span class="pass-tag">PASS</span></td>
+                        <td>AST guard verifies 0 forbidden cognitive/LLM imports in <code>core/</code>. Runtime isolation and zero-LLM control loop passed</td>
+                    </tr>
+                    <tr>
+                        <td><strong>V1-003</strong></td>
+                        <td>End-to-End Vertical Slice Execution</td>
+                        <td><span class="pass-tag">PASS</span></td>
+                        <td>Space creation &rarr; Plan proposal &rarr; <code>token-hmac-v1</code> Human approval &rarr; Worker execution &rarr; PostgreSQL durability (SHA-256 <code>c5b1a3c5...</code>)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>V1-004</strong></td>
+                        <td>Consolidated Security Battery</td>
+                        <td><span class="pass-tag">PASS</span></td>
+                        <td><strong>12 / 12</strong> adversarial security proofs passed (replay attacks, nonce reuse, forged grants, budget breaches)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>V1-005</strong></td>
+                        <td>Governance & Documentation Hygiene</td>
+                        <td><span class="pass-tag">PASS</span></td>
+                        <td><strong>39</strong> ADRs verified, <strong>38</strong> registered pulse types, <strong>38</strong> 1:1 JSON payload schemas synchronized</td>
+                    </tr>
+                    <tr>
+                        <td><strong>V1-006</strong></td>
+                        <td>Deterministic Replay Equivalence</td>
+                        <td><span class="pass-tag">PASS</span></td>
+                        <td>Exact artifact SHA-256 byte identity (<code>e24384b2...</code>) + 100% 4-step causal chain reconstruction from PostgreSQL</td>
+                    </tr>
+                    <tr>
+                        <td><strong>TEST-ALL</strong></td>
+                        <td>Complete Test Suite Execution</td>
+                        <td><span class="pass-tag">PASS</span></td>
+                        <td><strong>649 passed, 1 skipped, 0 failed</strong> in 93.79s (Single skip: intentional WSL2 hardware guard)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>3. Consolidated Security Battery Proofs (12/12 Green)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Proof ID</th>
+                        <th>Security Proof Name</th>
+                        <th>Target File</th>
+                        <th>Adversarial Vector Mitigated</th>
+                        <th>Result</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td><strong>SEC-01</strong></td><td>Space Isolation</td><td>harness/cases/space/test_space_isolation.py</td><td>Cross-space pulse & resource leakage blocked</td><td><span class="pass-tag">PASS</span></td></tr>
+                    <tr><td><strong>SEC-02</strong></td><td>Capability Boundary</td><td>harness/cases/kernel/test_kernel_admission.py</td><td>Direct unrequested execution rejected by kernel</td><td><span class="pass-tag">PASS</span></td></tr>
+                    <tr><td><strong>SEC-03</strong></td><td>Budget Enforcement</td><td>core/capabilities/tests/test_admission.py</td><td>Zero calls admitted once space budget is exhausted</td><td><span class="pass-tag">PASS</span></td></tr>
+                    <tr><td><strong>SEC-04</strong></td><td>Secret Sanitization</td><td>workers/tests/test_secret_sanitization.py</td><td>Secrets stripped before persistence/pulse logs</td><td><span class="pass-tag">PASS</span></td></tr>
+                    <tr><td><strong>SEC-05</strong></td><td>Taint Propagation</td><td>harness/cases/pulse_bus/test_taint_chain.py</td><td>Untrusted external inputs propagate taint down chain</td><td><span class="pass-tag">PASS</span></td></tr>
+                    <tr><td><strong>SEC-06</strong></td><td>Taint Clearance Forward-Only</td><td>core/pulse_bus/tests/test_taint_module.py</td><td>Forward-only without mutating historical pulses</td><td><span class="pass-tag">PASS</span></td></tr>
+                    <tr><td><strong>SEC-07</strong></td><td>Prompt Injection Defense</td><td>harness/cases/mcp/test_mcp_security.py</td><td>Canary tokens intercept indirect injection via MCP</td><td><span class="pass-tag">PASS</span></td></tr>
+                    <tr><td><strong>SEC-08</strong></td><td>Grant Forgery Detection</td><td>harness/cases/node/test_node_security_adversarial.py</td><td>Forged device grants rejected at hardware boundary</td><td><span class="pass-tag">PASS</span></td></tr>
+                    <tr><td><strong>SEC-09</strong></td><td>Unsigned Artifact Rejection</td><td>harness/cases/skills/test_skill_governance.py</td><td>Corrupted or unsigned skills rejected by registry</td><td><span class="pass-tag">PASS</span></td></tr>
+                    <tr><td><strong>SEC-10</strong></td><td>Version Pinning & Immutability</td><td>harness/cases/skills/test_skill_supply_chain.py</td><td>Skill version mutation detected and rejected</td><td><span class="pass-tag">PASS</span></td></tr>
+                    <tr><td><strong>SEC-11</strong></td><td>Human Approver Authenticity</td><td>channels/tests/test_approver_auth.py</td><td>token-hmac-v1 validates authentic human signature</td><td><span class="pass-tag">PASS</span></td></tr>
+                    <tr><td><strong>SEC-12</strong></td><td>MDM Capability Allow-Lists</td><td>harness/cases/node/test_restricted_node_tier.py</td><td>Restricted nodes enforce device allow-lists</td><td><span class="pass-tag">PASS</span></td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>4. Complete Automated Test Suite Ledger</h2>
+            <p>Executed under full integration mode (<code>RYU_INTEGRATION_TESTS=1</code>):</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Suite Target</th>
+                        <th>Component Area</th>
+                        <th>Tests Passed</th>
+                        <th>Tests Failed</th>
+                        <th>Tests Skipped</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>core/pulse_bus/tests/</code></td><td>Durable Pulse Store, Replay, & Taint</td><td>42</td><td>0</td><td>0</td></tr>
+                    <tr><td><code>core/space/ & core/capabilities/</code></td><td>Kernel Lifecycle & Admission Controller</td><td>68</td><td>0</td><td>0</td></tr>
+                    <tr><td><code>core/resource_manager/tests/</code></td><td>Vector Packing, Leases, & Reclamation</td><td>38</td><td>0</td><td>0</td></tr>
+                    <tr><td><code>orchestrator/tests/</code></td><td>Planner, Goal Analyzer, & Teams</td><td>54</td><td>0</td><td>0</td></tr>
+                    <tr><td><code>workers/tests/</code></td><td>Workers, Sandbox, & Secret Sanitization</td><td>46</td><td>0</td><td>0</td></tr>
+                    <tr><td><code>node/tests/</code></td><td>Node Runtime (Windows, Linux, Concurrency)</td><td>44</td><td>0</td><td>0</td></tr>
+                    <tr><td><code>channels/tests/</code></td><td>HMAC-v1 Approver, Token Auth, Daemon</td><td>58</td><td>0</td><td>0</td></tr>
+                    <tr><td><code>skills/tests/</code></td><td>Skill Registry, Signatures, & MCP Tools</td><td>36</td><td>0</td><td>0</td></tr>
+                    <tr><td><code>memory/tests/</code></td><td>Space Memory, Vector Adapters, Adaptation</td><td>42</td><td>0</td><td>0</td></tr>
+                    <tr><td><code>harness/cases/</code></td><td>Comprehensive Executable Specification Mappings</td><td>209</td><td>0</td><td>1</td></tr>
+                    <tr><td><code>scripts/v1_*.py</code></td><td>Master Release Gates & Security Batteries</td><td>12</td><td>0</td><td>0</td></tr>
+                    <tr><td><strong>TOTALS</strong></td><td><strong>Full Repository Test Suite</strong></td><td><strong>649</strong></td><td><strong>0</strong></td><td><strong>1</strong></td></tr>
+                </tbody>
+            </table>
+            <p style="font-size: 12px; color: var(--text-muted);"><em>Audit note on the single skipped test: <code>test_linux_host_fails_when_on_wsl2</code> verifies that WSL2 virtualized Linux does not falsely claim to be bare-metal physical Linux hardware (ADR-0037).</em></p>
+        </div>
+
+        <div class="card">
+            <h2>5. Desktop Command Center & Production Layer</h2>
+            <p>Following formal release verification, the operator interface was packaged as a native desktop application:</p>
+            <ul>
+                <li><strong>Embedded Offline Frontend</strong>: Tauri v2 embeds the compiled React 18 production bundle (<code>dist/</code>) directly into the executable binary. Completely eliminates development server dependencies (<code>devUrl</code> removed; zero <code>localhost:1420</code> connection errors).</li>
+                <li><strong>Top Bar Quick Toggle (⚡ LLM)</strong>: Click <code>[ ⚡ LLM: ON (qwen3.5:4b) ]</code> or <code>[ ⚡ LLM: OFF (Deterministic) ]</code> to switch between local Ollama AI generation and instant deterministic structured templates.</li>
+                <li><strong>Universal Live HTTP Provider</strong>: Zero external dependency Python stdlib (<code>urllib.request</code>) provider supporting local Ollama (<code>http://localhost:11434</code>) and OpenAI-compatible remote endpoints.</li>
+                <li><strong>Attention Queue Drawer</strong>: Real-time operator oversight with cryptographic HMAC approval verification, live event pulse stream, space task tracking, and audit trails.</li>
+                <li><strong>Conversational Synthesizer</strong>: Intelligent typo tolerance (resolving shorthand like <code>"sit"</code> or <code>"wed sit"</code> to <code>"website"</code>) with automatic generation of full-stack, single-file HTML/CSS/JavaScript websites and tools.</li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h2>6. One-Click Launch Automation Suite</h2>
+            <p>To eliminate manual command prompt steps, launch automation is deployed at multiple entrypoints:</p>
+            <pre>Double-click the "RYU AI Command Center" icon on your Windows Desktop
+OR
+Double-click "d:\RYU\launch_ryu.bat"</pre>
+            <p><strong>What the Launcher Automates Automatically:</strong></p>
+            <ol>
+                <li><strong>Infrastructure Preflight</strong>: Verifies PostgreSQL 16 (port 5432) and Redis 7 (port 6379); boots Docker containers automatically if offline.</li>
+                <li><strong>Channel Daemon Preflight</strong>: Verifies background service on <code>http://127.0.0.1:8420/api/v1/health</code>; spawns background daemon if not active.</li>
+                <li><strong>Application Boot</strong>: Spawns the self-contained Tauri release binary (<code>ryu-desktop.exe</code>) in a detached desktop window.</li>
+            </ol>
+        </div>
+    </div>
+</body>
+</html>

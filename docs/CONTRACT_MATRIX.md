@@ -250,6 +250,39 @@ Contract consumers must not create conflicting local definitions.
 
 ---
 
+# 15.1. CLI Channel Contracts
+
+| ID      | Contract                  | Required Invariant                                                  | Implementation | Harness | Roadmap | Status |
+| ------- | ------------------------- | ------------------------------------------------------------------- | -------------- | ------- | ------- | ------ |
+| CLI-001 | Goal submission           | CLI submits goal to Space and tracks execution.                     | `channels/cli` | `harness/cases/cli/test_cli_e2e.py` | Phase 8.5 | `GATE_VERIFIED` |
+| CLI-002 | Authenticated approval    | Approval decisions are cryptographically authenticated via HMAC.    | `channels/approval/auth.py` | `channels/tests/test_approver_auth.py` | Phase 8.5 | `GATE_VERIFIED` |
+| CLI-003 | Space switching           | CLI can switch active Space while maintaining strict isolation.     | `channels/cli` | `channels/tests/test_cli_parsing.py` | Phase 8.5 | `GATE_VERIFIED` |
+| CLI-004 | Output redaction          | Terminal output automatically sanitizes and redacts secrets.        | `channels/cli` | `harness/cases/cli/test_adversarial_security.py` | Phase 8.5 | `GATE_VERIFIED` |
+| CLI-005 | Daemon protocol           | CLI communicates with local daemon via authenticated IPC socket.    | `channels/daemon` | `channels/tests/test_daemon.py` | Phase 8.5 | `GATE_VERIFIED` |
+| CLI-006 | Attention budget          | CLI attention queue respects global attention limits.               | `channels/cli` | `channels/tests/test_attention_budget.py` | Phase 8.5 | `GATE_VERIFIED` |
+| CLI-007 | Interactive approval      | CLI provides non-blocking interactive approval prompts.             | `channels/cli` | `channels/tests/test_cli_shell.py` | Phase 8.5 | `GATE_VERIFIED` |
+| CLI-008 | Space status query        | CLI deterministically renders current Space execution status.       | `channels/cli` | `channels/tests/test_cli_shell.py` | Phase 8.5 | `GATE_VERIFIED` |
+| CLI-009 | Fail-closed parsing       | Malformed CLI flags and commands fail-closed with error.            | `channels/cli` | `channels/tests/test_cli_parsing.py` | Phase 8.5 | `GATE_VERIFIED` |
+| CLI-010 | Piped input taint         | Piped stdin into CLI is automatically tagged as tainted.            | `channels/cli` | `harness/cases/cli/test_adversarial_security.py` | Phase 8.5 | `GATE_VERIFIED` |
+| CLI-011 | Approval race protection  | Concurrent approval submissions resolve via atomic CAS.             | `channels/approval` | `harness/cases/cli/test_chaos_approvals.py` | Phase 8.5 | `GATE_VERIFIED` |
+| CLI-012 | Daemon crash cleanup      | Daemon auto-recovers and cleans up stale socket connections.        | `channels/daemon` | `channels/tests/test_daemon.py` | Phase 8.5 | `GATE_VERIFIED` |
+
+---
+
+# 15.2. Desktop Application Contracts
+
+| ID      | Contract                  | Required Invariant                                                  | Implementation | Harness | Roadmap | Status |
+| ------- | ------------------------- | ------------------------------------------------------------------- | -------------- | ------- | ------- | ------ |
+| APP-001 | Tauri bridge dispatch     | Desktop frontend dispatches commands to local daemon.               | `channels/app` | `harness/cases/cli/test_cli_e2e.py` | Phase 8.5 | `GATE_VERIFIED` |
+| APP-002 | Socket CSRF protection    | Local socket rejects unauthorized web origin requests.              | `channels/daemon` | `channels/tests/test_daemon.py` | Phase 8.5 | `GATE_VERIFIED` |
+| APP-003 | Streaming event queue     | Desktop UI receives real-time approval events via SSE.              | `channels/daemon` | `channels/tests/test_daemon.py` | Phase 8.5 | `GATE_VERIFIED` |
+| APP-004 | Signature verification UI | Desktop UI verifies and displays HMAC decision signatures.          | `channels/app` | `channels/tests/test_approver_auth.py` | Phase 8.5 | `GATE_VERIFIED` |
+| APP-005 | Space switcher scoping    | UI Space switcher strictly confines displayed events to active Space| `channels/app` | `channels/tests/test_cli_shell.py` | Phase 8.5 | `GATE_VERIFIED` |
+| APP-006 | Sidecar lifecycle         | Daemon process lifecycle is bound to the desktop window lifecycle.  | `channels/app` | `channels/tests/test_daemon.py` | Phase 8.5 | `GATE_VERIFIED` |
+
+
+---
+
 # 16. Orchestrator Contracts
 
 | ID       | Contract              | Required Invariant                                                | Implementation             | Harness               | Roadmap | Status      |
@@ -302,19 +335,37 @@ Contract consumers must not create conflicting local definitions.
 | NODE-006 | Offline recovery   | Node disconnect creates checkpointable offline state.          | Node coordinator | Offline test         | Phase 7     | `GATE_VERIFIED` |
 | NODE-007 | Resume             | Reconnection resumes using the same idempotency semantics.     | Node coordinator | Resume/no-dup test   | Phase 7     | `GATE_VERIFIED` |
 | NODE-008 | Independent audit  | Device audit remains readable without RYU server availability. | Node audit       | Physical-device test | Phase 7     | `GATE_VERIFIED` |
+| NODE-009 | Linux Platform Profile | Linux platform profile and WSL2 compatibility validation without bare-metal claim. | Platform Profiles | `test_node_linux_profile.py` | Phase 11 | `GATE_VERIFIED` |
+| NODE-010 | Multi-Node Concurrency | Multi-node concurrency in a single Space with per-node grant tracking. | Node Coordinator | `test_multi_node_concurrency.py` | Phase 11 | `GATE_VERIFIED` |
+| NODE-011 | Per-Node Grant Isolation | Per-node grant isolation and device fault containment. | Node Registry | `test_multi_node_concurrency.py` | Phase 11 | `GATE_VERIFIED` |
+| NODE-012 | Restricted Node MDM Allow-Lists | Restricted Node Tier MDM capability allow-lists enforced at device boundary. | Restricted Node Runtime | `test_restricted_node_tier.py` | Phase 11 | `GATE_VERIFIED` |
+| NODE-013 | Post-v1 Platform Placeholders | Post-v1 platform placeholders and cargo feature flags compile cleanly. | Node Runtime Cargo | `test_node_platform_stubs.py` | Phase 11 | `GATE_VERIFIED` |
 
 ---
 
-# 20. Registry / Supply-Chain Contracts
+# 20. Registry / Supply-Chain / Tools Contracts
 
 | ID      | Contract         | Required Invariant                                           | Implementation | Harness            | Roadmap | Status      |
 | ------- | ---------------- | ------------------------------------------------------------ | -------------- | ------------------ | ------- | ----------- |
-| REG-001 | Version identity | Tools/Skills have explicit versions.                         | Registry       | Registration test  | Phase 9 | `SPECIFIED` |
-| REG-002 | Content hash     | Artifact identity includes content hash.                     | Registry       | Payload swap test  | Phase 9 | `SPECIFIED` |
-| REG-003 | Signature        | Unsigned artifacts are rejected where required.              | Registry       | Unsigned test      | Phase 9 | `SPECIFIED` |
-| REG-004 | Risk binding     | Risk tier is bound to verified artifact identity.            | Registry       | Hash mutation test | Phase 9 | `SPECIFIED` |
-| REG-005 | Version pinning  | `@latest` cannot silently change execution.                  | Registry       | Version-pin test   | Phase 9 | `SPECIFIED` |
-| REG-006 | MCP namespace    | MCP tools are mapped into the Tools Layer under a namespace. | MCP ingestion  | MCP integration    | Phase 9 | `SPECIFIED` |
+| REG-001 | Version identity | Tools/Skills have explicit versions.                         | Registry       | Registration test  | Phase 9 | `GATE_VERIFIED` |
+| REG-002 | Content hash     | Artifact identity includes content hash.                     | Registry       | Payload swap test  | Phase 9 | `GATE_VERIFIED` |
+| REG-003 | Signature        | Unsigned artifacts are rejected where required.              | Registry       | Unsigned test      | Phase 9 | `GATE_VERIFIED` |
+| REG-004 | Risk binding     | Risk tier is bound to verified artifact identity.            | Registry       | Hash mutation test | Phase 9 | `GATE_VERIFIED` |
+| REG-005 | Version pinning  | `@latest` cannot silently change execution.                  | Registry       | Version-pin test   | Phase 9 | `GATE_VERIFIED` |
+| REG-006 | MCP namespace    | MCP tools are mapped into the Tools Layer under a namespace. | MCP ingestion  | MCP integration    | Phase 9 | `GATE_VERIFIED` |
+| SKILL-001 | Skill Zero Authority & Admission Delegation | Skills have zero inherent authority and delegate to Admission Control. | Skill Registry / Executor | `test_skill_governance.py` | Phase 9 | `GATE_VERIFIED` |
+| SKILL-002 | Skill Contract Input & Output Schema Enforcement | Skill inputs and outputs are validated against JSON schemas. | Skill Executor | `test_skill_execution.py` | Phase 9 | `GATE_VERIFIED` |
+| SKILL-003 | Skill Output Taint Marking | Untrusted skill outputs are marked with taint. | Skill Executor / Taint | `test_skill_governance.py` | Phase 9 | `GATE_VERIFIED` |
+| MCP-001 | JSON-RPC 2.0 Stdio Wire Protocol | MCP servers communicate via strict JSON-RPC 2.0 over stdio. | MCP Client | `test_mcp_integration.py` | Phase 9 | `GATE_VERIFIED` |
+| MCP-002 | MCP Controlled Tool Discovery | Tool discovery is strictly controlled and namespaced. | MCP Registry | `test_mcp_integration.py` | Phase 9 | `GATE_VERIFIED` |
+| MCP-003 | Sandboxed MCP Worker Execution & Pulses | MCP workers execute inside sandbox and emit typed pulses. | MCP Worker | `test_mcp_integration.py` | Phase 9 | `GATE_VERIFIED` |
+| SEC-MCP-001 | Admission Controller Bypass Prevention | MCP execution cannot bypass Admission Control. | Admission Control | `test_mcp_security.py` | Phase 9 | `GATE_VERIFIED` |
+| SEC-MCP-002 | Prompt Injection Canary Protection | Canary tokens prevent indirect prompt injection via MCP tools. | Canary Sanitizer | `test_mcp_security.py` | Phase 9 | `GATE_VERIFIED` |
+| SEC-MCP-005 | Cross-Space Execution Denial | MCP execution cannot cross Space boundaries without authorization. | Space Boundary | `test_mcp_security.py` | Phase 9 | `GATE_VERIFIED` |
+| CHAOS-MCP-001 | Subprocess Crash Recovery and Cleanup | Subprocess crashes are contained and cleaned up. | Worker Process Manager | `test_mcp_chaos.py` | Phase 9 | `GATE_VERIFIED` |
+| CHAOS-MCP-002 | Subprocess Watchdog Timeout Enforcement | Hanging MCP tool processes are terminated via watchdog timer. | Process Watchdog | `test_mcp_chaos.py` | Phase 9 | `GATE_VERIFIED` |
+| CHAOS-MCP-003 | Malformed JSON-RPC Protocol Error Containment | Malformed JSON-RPC does not crash the host runtime. | JSON-RPC Parser | `test_mcp_chaos.py` | Phase 9 | `GATE_VERIFIED` |
+| CHAOS-MCP-006 | Server Disconnect and Reconnect Resilience | Disconnect and reconnect handled cleanly without leaked state. | MCP Client Manager | `test_mcp_chaos.py` | Phase 9 | `GATE_VERIFIED` |
 
 ---
 
@@ -513,6 +564,19 @@ If the architecture does not answer it, an ADR is required before implementation
 * [ ] No implementation status is claimed without evidence.
 * [ ] The matrix does not override `docs/architecture.md`.
 * [ ] Changes follow the project's ADR discipline.
+
+---
+
+# 30B. v1.0 Release Verification Contracts
+
+| ID     | Contract                                | Required Invariant                                                            | Implementation Boundary    | Harness / Evidence                  | Roadmap | Status      |
+| ------ | --------------------------------------- | ----------------------------------------------------------------------------- | -------------------------- | ----------------------------------- | ------- | ----------- |
+| V1-001 | Dynamic Spec Coverage Audit             | Zero orphaned architecture criteria, zero orphaned spec entries, zero missing tests. | Verification Tooling       | `scripts/v1_audit_spec_coverage.py` | Release | `SPECIFIED` |
+| V1-002 | Core Independence Proof                 | Deterministic core has zero cognitive layer dependencies and AST + runtime isolation pass. | Dependency Guard           | `scripts/v1_verify_core_independence.py` | Release | `SPECIFIED` |
+| V1-003 | End-to-End Vertical Slice Execution     | Real human approval via token-hmac-v1, device execution, artifact creation, and pulse durability. | Verification Runner        | `scripts/v1_run_vertical_slice.py`  | Release | `SPECIFIED` |
+| V1-004 | Consolidated Security Battery           | All 12 mandatory security proofs pass consecutively without bypass.            | Security Test Suite        | `scripts/v1_run_security_regression.py` | Release | `SPECIFIED` |
+| V1-005 | Governance & Documentation Hygiene      | All 39 ADRs valid, all 38 pulse types registered, payload schemas complete.    | Governance Auditor         | `scripts/v1_audit_governance.py`    | Release | `SPECIFIED` |
+| V1-006 | Deterministic Replay Equivalence        | Exact artifact SHA-256 byte identity and structural causal replay equivalence. | Replay Verifier            | `scripts/v1_verify_replay.py`       | Release | `SPECIFIED` |
 
 ---
 

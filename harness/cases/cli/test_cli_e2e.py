@@ -454,7 +454,7 @@ def test_human_005_attention_dequeuing_activates_next(e2e_env):
 )
 def test_rec_006_audit_immutability():
     import psycopg2
-    cfg = PostgresConfig()
+    cfg = PostgresConfig.from_env()
     conn = psycopg2.connect(
         host=cfg.host, port=cfg.port, dbname=cfg.db, user=cfg.user, password=cfg.password
     )

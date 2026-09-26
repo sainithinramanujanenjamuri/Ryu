@@ -60,6 +60,22 @@ CREATE INDEX IF NOT EXISTS idx_approvals_req_hash ON approvals (capability_reque
 CREATE OR REPLACE FUNCTION prevent_pulse_modification()
 RETURNS TRIGGER AS $$
 BEGIN
+    IF TG_OP = 'UPDATE' THEN
+        -- Allow updating only redis_published transport flag; all audit fields must remain strictly identical
+        IF (NEW.position IS NOT DISTINCT FROM OLD.position) AND
+           (NEW.id IS NOT DISTINCT FROM OLD.id) AND
+           (NEW.space_id IS NOT DISTINCT FROM OLD.space_id) AND
+           (NEW.type IS NOT DISTINCT FROM OLD.type) AND
+           (NEW.severity IS NOT DISTINCT FROM OLD.severity) AND
+           (NEW.source IS NOT DISTINCT FROM OLD.source) AND
+           (NEW.timestamp IS NOT DISTINCT FROM OLD.timestamp) AND
+           (NEW.payload IS NOT DISTINCT FROM OLD.payload) AND
+           (NEW.taint IS NOT DISTINCT FROM OLD.taint) AND
+           (NEW.correlation_id IS NOT DISTINCT FROM OLD.correlation_id) AND
+           (NEW.parent_pulse_id IS NOT DISTINCT FROM OLD.parent_pulse_id) THEN
+            RETURN NEW;
+        END IF;
+    END IF;
     RAISE EXCEPTION 'Audit Immutability Violation: pulses table is append-only. UPDATE and DELETE are prohibited.';
 END;
 $$ LANGUAGE plpgsql;

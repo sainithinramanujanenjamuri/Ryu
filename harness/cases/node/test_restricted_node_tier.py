@@ -15,6 +15,7 @@ MDM_DENY -> binding denied.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -28,7 +29,6 @@ from node.bridge import RustNodeBridge
 from node.contract import (
     DeviceGrant,
     DeviceInfo,
-    DeviceState,
     DeviceType,
     GrantInvalidError,
     NodeInfo,
@@ -186,7 +186,13 @@ def test_node_mdm_allow_cannot_authenticate_forged_grant(restricted_setup) -> No
     forged_grant.sign("attacker-invalid-secret-key")
 
     with pytest.raises(GrantInvalidError) as exc_info:
-        runtime.bind_device("worker-01", "space-sec", forged_grant, "cpu-0")
+        runtime.bind_device(
+            "worker-01",
+            "space-sec",
+            forged_grant,
+            "cpu-0",
+            current_time=datetime(2026, 9, 23, 12, 30, tzinfo=timezone.utc),
+        )
 
     assert "Cryptographic signature verification failed" in str(exc_info.value)
 

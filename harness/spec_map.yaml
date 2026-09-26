@@ -1188,8 +1188,350 @@ spec_map:
     roadmap_phase: 11
     evidence_state: "GATE_VERIFIED"
 
+  - id: ARC-001
+    title: "Everything Happens Inside a Space"
+    architecture_section: "docs/Architecture §4, Law 1"
+    acceptance_criterion: >
+      Every meaningful operation belongs to a Space. Cross-space operations are denied.
+    contract:
+      file: "core/space/kernel.py"
+      rule: "Space is primary authority and isolation boundary"
+    harness_case: "harness/cases/space/test_space_isolation.py"
+    roadmap_phase: 2
+    evidence_state: "GATE_VERIFIED"
 
+  - id: ARC-002
+    title: "Capabilities Are Requested, Never Owned"
+    architecture_section: "docs/Architecture §4, Law 2"
+    acceptance_criterion: >
+      Components do not inherently own capabilities. Capabilities are requested and admitted through Admission Control.
+    contract:
+      file: "core/space/kernel.py"
+      rule: "CapabilityRequest validated by Admission Control"
+    harness_case: "harness/cases/kernel/test_kernel_admission.py"
+    roadmap_phase: 2
+    evidence_state: "GATE_VERIFIED"
 
+  - id: ARC-003
+    title: "Components Communicate Through Pulses"
+    architecture_section: "docs/Architecture Law 3"
+    acceptance_criterion: >
+      Components communicate through typed Pulses. Unknown Pulse types are rejected synchronously.
+    contract:
+      file: "core/pulse_bus/src/ryu/pulse_bus/bus.py"
+      rule: "Unregistered pulse types rejected"
+    harness_case: "harness/cases/pulse_bus/test_registry_rejects_unknown_type.py"
+    roadmap_phase: 1
+    evidence_state: "GATE_VERIFIED"
 
+  - id: ARC-005
+    title: "Humans Define Goals; RYU Organizes Execution"
+    architecture_section: "docs/Architecture Law 5"
+    acceptance_criterion: >
+      Human intent defines goals. RYU organizes planning, assignment, execution, and monitoring.
+    contract:
+      file: "core/orchestrator/orchestrator.py"
+      rule: "Deterministic goal decomposition and planning"
+    harness_case: "harness/cases/orchestrator/test_orchestrator_future.py"
+    roadmap_phase: 4
+    evidence_state: "GATE_VERIFIED"
 
+  - id: ARC-006
+    title: "Failures Are Contained and Escalated"
+    architecture_section: "docs/Architecture Law 6"
+    acceptance_criterion: >
+      Failures remain within originating scope and are surfaced to appropriate authority.
+    contract:
+      file: "contracts/registry/failure-taxonomy.json"
+      rule: "Failure taxonomy classification and escalation"
+    harness_case: "harness/cases/workers/test_worker_chaos.py"
+    roadmap_phase: 3
+    evidence_state: "GATE_VERIFIED"
 
+  - id: ARC-008
+    title: "Architecture Document Frozen Except Through ADR Process"
+    architecture_section: "AGENTS.md §33, ROADMAP.md"
+    acceptance_criterion: >
+      Architecture modifications require append-only ADR with context, decision, and consequences.
+    contract:
+      file: "adr/"
+      rule: "39 immutable numbered ADRs"
+    harness_case: "harness/cases/v1_release/test_v1_governance.py"
+    roadmap_phase: 0
+    evidence_state: "GATE_VERIFIED"
+
+  - id: ARC-009
+    title: "Replay Is a First-Class Debugging Capability"
+    architecture_section: "docs/Architecture §4, §16"
+    acceptance_criterion: >
+      System execution reconstructable from persisted pulses, state, and recorded actions.
+    contract:
+      file: "core/pulse_bus/src/ryu/pulse_bus/replay.py"
+      rule: "Deterministic replay of causal chain and states"
+    harness_case: "harness/cases/v1_release/test_v1_replay.py"
+    roadmap_phase: 1
+    evidence_state: "GATE_VERIFIED"
+
+  - id: ARC-010
+    title: "No Silent Failure, Denial, Timeout, or Backpressure Path"
+    architecture_section: "docs/Architecture Law 6"
+    acceptance_criterion: >
+      Every failure, denial, timeout, or rate limit emits an observable typed event.
+    contract:
+      file: "core/pulse_bus/src/ryu/pulse_bus/pulse.py"
+      rule: "Typed pulse emitted on every negative outcome"
+    harness_case: "harness/cases/orchestrator/test_chaos_v2.py"
+    roadmap_phase: 3
+    evidence_state: "GATE_VERIFIED"
+
+  - id: PLAN-002
+    title: "Deterministic Winner Under Concurrency"
+    architecture_section: "docs/Architecture §4, §16, ADR-0003"
+    acceptance_criterion: >
+      Concurrent Deltas have exactly one authoritative winner via CAS versioning.
+    contract:
+      file: "core/plans/plan_store.py"
+      rule: "Atomic CAS compare-and-swap"
+    harness_case: "harness/cases/orchestrator/test_concurrency_and_contention.py"
+    roadmap_phase: 2
+    evidence_state: "GATE_VERIFIED"
+
+  - id: PLAN-004
+    title: "Rebase Losing Valid Delta"
+    architecture_section: "docs/Architecture §4, §16, ADR-0003"
+    acceptance_criterion: >
+      Losing valid Delta may rebase against updated authoritative plan version.
+    contract:
+      file: "core/plans/plan_store.py"
+      rule: "Plan rebase policy"
+    harness_case: "core/plans/tests/test_plan_engine.py"
+    roadmap_phase: 2
+    evidence_state: "GATE_VERIFIED"
+
+  - id: PLAN-005
+    title: "In-Flight Node Resolution"
+    architecture_section: "docs/Architecture §4, §16"
+    acceptance_criterion: >
+      Superseded plan nodes resolve via finish, checkpoint, or cancel.
+    contract:
+      file: "core/plans/inflight_resolve.py"
+      rule: "Deterministic in-flight node resolution"
+    harness_case: "harness/cases/kernel/test_kernel_future.py"
+    roadmap_phase: 2
+    evidence_state: "GATE_VERIFIED"
+
+  - id: PLAN-006
+    title: "Rebase Bound Prevents Livelock"
+    architecture_section: "docs/Architecture §4, §16, ADR-0003"
+    acceptance_criterion: >
+      Replan storms cannot create unbounded CAS livelock; max retries bounded.
+    contract:
+      file: "core/plans/plan_store.py"
+      rule: "CAS retry bounding"
+    harness_case: "harness/cases/kernel/test_kernel_future.py"
+    roadmap_phase: 2
+    evidence_state: "GATE_VERIFIED"
+
+  - id: PULSE-002
+    title: "Payload Validation"
+    architecture_section: "docs/Architecture §16"
+    acceptance_criterion: >
+      Invalid payloads never enter the log; validated against JSON schema.
+    contract:
+      file: "contracts/registry/payload-schemas/*.json"
+      rule: "JSON schema validation on publish"
+    harness_case: "core/pulse_bus/tests/test_bus_validation.py"
+    roadmap_phase: 0
+    evidence_state: "GATE_VERIFIED"
+
+  - id: PULSE-003
+    title: "Pre-Publish Rejection"
+    architecture_section: "docs/Architecture §16"
+    acceptance_criterion: >
+      Validation occurs before persistence; rejected pulses never touch storage.
+    contract:
+      file: "core/pulse_bus/src/ryu/pulse_bus/durable_bus.py"
+      rule: "Validation before Postgres append"
+    harness_case: "core/pulse_bus/tests/test_durable_bus_unit.py"
+    roadmap_phase: 1
+    evidence_state: "GATE_VERIFIED"
+
+  - id: PULSE-007
+    title: "Taint Clearance Forward-Only"
+    architecture_section: "docs/Architecture §10, §16"
+    acceptance_criterion: >
+      Clearance applies forward-only and does not mutate historical pulses.
+    contract:
+      file: "core/pulse_bus/src/ryu/pulse_bus/taint.py"
+      rule: "Taint immutability and forward clearance"
+    harness_case: "core/pulse_bus/tests/test_taint_module.py"
+    roadmap_phase: 1
+    evidence_state: "GATE_VERIFIED"
+
+  - id: REC-003
+    title: "Plan Recovery After Restart"
+    architecture_section: "docs/Architecture §4, CONTRACT_MATRIX §22"
+    acceptance_criterion: >
+      Authoritative plan version survives runtime restart.
+    contract:
+      file: "core/plans/plan_store.py"
+      rule: "Plan reconstruction from persistent store"
+    harness_case: "core/plans/tests/test_plan_engine.py"
+    roadmap_phase: 2
+    evidence_state: "GATE_VERIFIED"
+
+  - id: REC-004
+    title: "Budget Recovery After Restart"
+    architecture_section: "docs/Architecture §4, CONTRACT_MATRIX §22"
+    acceptance_criterion: >
+      Budget window state remains authoritative after restart.
+    contract:
+      file: "core/capabilities/windows.py"
+      rule: "Persistent budget window recovery"
+    harness_case: "core/capabilities/tests/test_windows.py"
+    roadmap_phase: 2
+    evidence_state: "GATE_VERIFIED"
+
+  - id: REC-005
+    title: "Lease Recovery"
+    architecture_section: "docs/Architecture §16, CONTRACT_MATRIX §22"
+    acceptance_criterion: >
+      Lease ownership and expiry recover deterministically after restart.
+    contract:
+      file: "core/resources/manager.py"
+      rule: "Lease state recovery"
+    harness_case: "core/resources/tests/test_manager.py"
+    roadmap_phase: 3
+    evidence_state: "GATE_VERIFIED"
+
+  - id: REC-007
+    title: "Node Recovery"
+    architecture_section: "docs/Architecture §11, CONTRACT_MATRIX §22"
+    acceptance_criterion: >
+      Offline/reconnected nodes do not duplicate side effects.
+    contract:
+      file: "node/coordinator.py"
+      rule: "Offline heartbeat and reconnection reconciliation"
+    harness_case: "node/tests/test_node_coordinator_and_heartbeat.py"
+    roadmap_phase: 7
+    evidence_state: "GATE_VERIFIED"
+
+  - id: RESOURCE-003
+    title: "Resource Lease Expiry"
+    architecture_section: "docs/Architecture §16, CONTRACT_MATRIX §8"
+    acceptance_criterion: >
+      Expired leases cannot continue valid ownership.
+    contract:
+      file: "core/resources/lease.py"
+      rule: "Deterministic lease expiration"
+    harness_case: "core/resources/tests/test_lease.py"
+    roadmap_phase: 3
+    evidence_state: "GATE_VERIFIED"
+
+  - id: RESOURCE-004
+    title: "Resource Lease Revocation"
+    architecture_section: "docs/Architecture §16, CONTRACT_MATRIX §8"
+    acceptance_criterion: >
+      Revoked leases cannot be used for capability execution.
+    contract:
+      file: "core/resources/lease.py"
+      rule: "Immediate lease revocation"
+    harness_case: "core/resources/tests/test_lease.py"
+    roadmap_phase: 3
+    evidence_state: "GATE_VERIFIED"
+
+  - id: RESOURCE-007
+    title: "Resource Rate Limiting"
+    architecture_section: "docs/Architecture §16, CONTRACT_MATRIX §8"
+    acceptance_criterion: >
+      Over-limit requests are queued and emit rate.limited Pulse.
+    contract:
+      file: "core/resources/rate_limit.py"
+      rule: "Rate limit enforcement and pulse notification"
+    harness_case: "core/resources/tests/test_rate_limit.py"
+    roadmap_phase: 3
+    evidence_state: "GATE_VERIFIED"
+
+  - id: TAINT-002
+    title: "Taint Propagation Through Causal Chain"
+    architecture_section: "docs/Architecture §10, CONTRACT_MATRIX §10"
+    acceptance_criterion: >
+      Taint propagates unbroken down the causal lineage until cleared.
+    contract:
+      file: "core/pulse_bus/src/ryu/pulse_bus/taint.py"
+      rule: "Causal taint resolution"
+    harness_case: "harness/cases/pulse_bus/test_taint_chain.py"
+    roadmap_phase: 1
+    evidence_state: "GATE_VERIFIED"
+
+  - id: V1-001
+    title: "Dynamic Spec Coverage Audit"
+    architecture_section: "docs/Architecture, docs/CONTRACT_MATRIX.md"
+    acceptance_criterion: >
+      Zero orphaned architecture criteria, zero orphaned spec entries, zero missing tests.
+    contract:
+      file: "scripts/v1_audit_spec_coverage.py"
+      rule: "Dynamic repository AST and matrix audit"
+    harness_case: "scripts/v1_audit_spec_coverage.py"
+    roadmap_phase: 12
+    evidence_state: "GATE_VERIFIED"
+
+  - id: V1-002
+    title: "Core Independence Proof"
+    architecture_section: "AGENTS.md §4, docs/Architecture (deterministic core)"
+    acceptance_criterion: >
+      Deterministic core has zero cognitive layer dependencies and AST + runtime isolation pass.
+    contract:
+      file: "scripts/v1_verify_core_independence.py"
+      rule: "AST dependency guard + runtime import blocker + zero-LLM loop"
+    harness_case: "scripts/v1_verify_core_independence.py"
+    roadmap_phase: 12
+    evidence_state: "GATE_VERIFIED"
+
+  - id: V1-003
+    title: "End-to-End Vertical Slice Execution"
+    architecture_section: "docs/Architecture §4, §11, §16, ROADMAP v1.0"
+    acceptance_criterion: >
+      Real human approval via token-hmac-v1, device execution, artifact creation, and pulse durability.
+    contract:
+      file: "scripts/v1_run_vertical_slice.py"
+      rule: "Complete vertical slice across runtime, channels, node, and storage"
+    harness_case: "harness/cases/v1_release/test_v1_vertical_slice.py"
+    roadmap_phase: 12
+    evidence_state: "GATE_VERIFIED"
+
+  - id: V1-004
+    title: "Consolidated Security Battery"
+    architecture_section: "docs/Architecture §4, §10, §16, CONTRACT_MATRIX §25"
+    acceptance_criterion: >
+      All 12 mandatory security proofs pass consecutively without bypass.
+    contract:
+      file: "scripts/v1_run_security_regression.py"
+      rule: "12 consecutive security regression tests"
+    harness_case: "harness/cases/v1_release/test_v1_security_battery.py"
+    roadmap_phase: 12
+    evidence_state: "GATE_VERIFIED"
+
+  - id: V1-005
+    title: "Governance & Documentation Hygiene"
+    architecture_section: "AGENTS.md, docs/Architecture, ROADMAP v1.0"
+    acceptance_criterion: >
+      All 39 ADRs valid, all 38 pulse types registered, payload schemas complete.
+    contract:
+      file: "scripts/v1_audit_governance.py"
+      rule: "Automated audit of ADRs, schemas, contracts, and registry"
+    harness_case: "harness/cases/v1_release/test_v1_governance.py"
+    roadmap_phase: 12
+    evidence_state: "GATE_VERIFIED"
+
+  - id: V1-006
+    title: "Deterministic Replay Equivalence Verification"
+    architecture_section: "docs/Architecture §4, §16, ROADMAP v1.0"
+    acceptance_criterion: >
+      Exact artifact SHA-256 byte identity and structural causal replay equivalence.
+    contract:
+      file: "scripts/v1_verify_replay.py"
+      rule: "Replay equivalence verification on artifact bytes and causation stream"
+    harness_case: "harness/cases/v1_release/test_v1_replay.py"
+    roadmap_phase: 12
+    evidence_state: "GATE_VERIFIED"
