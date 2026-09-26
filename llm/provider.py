@@ -138,3 +138,133 @@ class MockLLMProvider:
                 usage=LLMUsage(prompt_tokens=50, completion_tokens=25, total_tokens=75),
                 status="ok",
             )
+
+
+class LiveHTTPLLMProvider:
+    """Universal HTTP provider supporting Ollama and OpenAI-compatible endpoints.
+
+    Supports:
+    - Local Ollama (/api/chat or /v1/chat/completions)
+    - OpenAI (/v1/chat/completions)
+    - Any compatible server (Groq, vLLM, LMStudio, LocalAI, etc.)
+    Uses standard library urllib (zero external dependencies).
+    """
+
+    def __init__(
+        self,
+        base_url: str = "http://localhost:11434",
+        api_key: str = "",
+        model: str = "llama3",
+        timeout: float = 120.0,
+        provider_name: str = "live_http",
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.model = model
+        self.timeout = timeout
+        self.provider_name = provider_name
+
+    def complete(self, request: LLMRequest) -> LLMResponse:
+        import json
+        import urllib.error
+        import urllib.request
+
+        model = request.model or self.model or "llama3"
+        messages = request.messages
+
+        # Determine target endpoint and payload
+        is_ollama_native = "11434" in self.base_url and not self.base_url.endswith("/v1")
+        if is_ollama_native:
+            endpoint = f"{self.base_url}/api/chat"
+            payload = {
+                "model": model,
+                "messages": messages,
+                "stream": False,
+            }
+        else:
+            base = self.base_url
+            if not base.endswith("/chat/completions"):
+                if base.endswith("/v1"):
+                    endpoint = f"{base}/chat/completions"
+                else:
+                    endpoint = f"{base}/v1/chat/completions"
+            else:
+                endpoint = base
+
+            payload = {
+                "model": model,
+                "messages": messages,
+                "stream": False,
+                "temperature": request.parameters.get("temperature", 0.7),
+            }
+
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "RYU-AI/1.0",
+        }
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        data_bytes = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(endpoint, data=data_bytes, headers=headers, method="POST")
+
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                resp_data = json.loads(resp.read().decode("utf-8"))
+
+            content = ""
+            prompt_tokens = 0
+            completion_tokens = 0
+
+            if is_ollama_native:
+                msg = resp_data.get("message", {})
+                content = msg.get("content", "")
+                prompt_tokens = resp_data.get("prompt_eval_count", 0)
+                completion_tokens = resp_data.get("eval_count", 0)
+            else:
+                choices = resp_data.get("choices", [])
+                if choices:
+                    content = choices[0].get("message", {}).get("content", "")
+                usage = resp_data.get("usage", {})
+                prompt_tokens = usage.get("prompt_tokens", 0)
+                completion_tokens = usage.get("completion_tokens", 0)
+
+            return LLMResponse(
+                request_id=request.request_id,
+                content=content,
+                usage=LLMUsage(
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    total_tokens=prompt_tokens + completion_tokens,
+                ),
+                status="ok",
+            )
+        except urllib.error.HTTPError as e:
+            err_body = ""
+            try:
+                err_body = e.read().decode("utf-8")
+            except Exception:
+                pass
+            err_msg = f"HTTP {e.code}: {err_body or e.reason}"
+            return LLMResponse(
+                request_id=request.request_id,
+                content="",
+                status="failed",
+                error=LLMError(error_class="http_error", message=err_msg, retryable=e.code in (429, 502, 503, 504)),
+            )
+        except urllib.error.URLError as e:
+            err_msg = f"Connection failed to {endpoint}: {e.reason}"
+            return LLMResponse(
+                request_id=request.request_id,
+                content="",
+                status="failed",
+                error=LLMError(error_class="connection_error", message=err_msg, retryable=True),
+            )
+        except Exception as e:
+            return LLMResponse(
+                request_id=request.request_id,
+                content="",
+                status="failed",
+                error=LLMError(error_class="internal_error", message=str(e), retryable=False),
+            )
+

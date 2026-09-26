@@ -93,7 +93,27 @@ export class ApiClient {
     return data.events;
   }
 
-  async sendPrompt(spaceId: string, prompt: string): Promise<{
+  async getLLMConfig(): Promise<{
+    enabled: boolean;
+    provider: string;
+    base_url: string;
+    model: string;
+    api_key_masked?: string;
+  }> {
+    return this.request("GET", "/api/v1/config/llm");
+  }
+
+  async setLLMConfig(config: {
+    enabled?: boolean;
+    provider?: string;
+    base_url?: string;
+    model?: string;
+    api_key?: string;
+  }): Promise<{ success: boolean; config: any }> {
+    return this.request("POST", "/api/v1/config/llm", config);
+  }
+
+  async sendPrompt(spaceId: string, prompt: string, liveLLM?: boolean): Promise<{
     command_id: string;
     space_id: string;
     goal_id: string;
@@ -104,7 +124,10 @@ export class ApiClient {
     response: string;
     status: string;
   }> {
-    return this.request("POST", `/api/v1/spaces/${spaceId}/prompt`, { prompt });
+    return this.request("POST", `/api/v1/spaces/${spaceId}/prompt`, {
+      prompt,
+      live_llm: liveLLM,
+    });
   }
 
   /**

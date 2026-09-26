@@ -78,6 +78,37 @@ export const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [tokenInput, setTokenInput] = useState(api.getDaemonToken());
 
+  // Live LLM Generation State
+  const [liveLLMEnabled, setLiveLLMEnabled] = useState<boolean>(() => {
+    return localStorage.getItem("ryu_live_llm") === "true";
+  });
+  const [llmProvider, setLlmProvider] = useState<string>("ollama");
+  const [llmBaseUrl, setLlmBaseUrl] = useState<string>("http://localhost:11434");
+  const [llmModel, setLlmModel] = useState<string>("qwen3.5:4b");
+  const [llmApiKey, setLlmApiKey] = useState<string>("");
+
+  const toggleLiveLLM = async () => {
+    const nextState = !liveLLMEnabled;
+    setLiveLLMEnabled(nextState);
+    localStorage.setItem("ryu_live_llm", String(nextState));
+    try {
+      await api.setLLMConfig({ enabled: nextState });
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `cmd-${Date.now()}`,
+          role: "system",
+          content: nextState
+            ? `### ⚡ Live LLM Generation: ON\nPrompts will now be routed to **${llmProvider.toUpperCase()}** (\`${llmModel}\` at \`${llmBaseUrl}\`).`
+            : `### 🔒 Deterministic Fast Mode: ON\nPrompts will now use local fast templates (zero network/token overhead).`,
+          timestamp: Date.now(),
+        },
+      ]);
+    } catch (e: any) {
+      console.error("Failed to sync LLM config with daemon:", e);
+    }
+  };
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -112,6 +143,16 @@ export const App: React.FC = () => {
 
       const audit = await api.getAudit(currentSpaceId);
       setAuditEvents(audit);
+
+      try {
+        const llmCfg = await api.getLLMConfig();
+        if (llmCfg) {
+          setLiveLLMEnabled(llmCfg.enabled);
+          if (llmCfg.provider) setLlmProvider(llmCfg.provider);
+          if (llmCfg.base_url) setLlmBaseUrl(llmCfg.base_url);
+          if (llmCfg.model) setLlmModel(llmCfg.model);
+        }
+      } catch {}
     } catch {
       setIsOnline(false);
       setLatencyMs(null);
@@ -201,7 +242,7 @@ export const App: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      const res = await api.sendPrompt(currentSpaceId, promptToSend);
+      const res = await api.sendPrompt(currentSpaceId, promptToSend, liveLLMEnabled);
 
       setMessages((prev) =>
         prev.map((msg) =>
@@ -261,9 +302,23 @@ export const App: React.FC = () => {
       return;
     }
 
-    if (root === "/approvals") {
+    if (root === "/approvals" || root === "/approval") {
       setDrawerOpen(true);
       setDrawerTab("attention");
+      return;
+    }
+
+    if (root === "/spaces" || root === "/space") {
+      const spaceList = spaces.map((s) => `- \`${s.space_id}\` (${s.name || s.space_id}) ${s.space_id === currentSpaceId ? "**[ACTIVE]**" : ""}`).join("\n");
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `cmd-${Date.now()}`,
+          role: "system",
+          content: `### SCCA Isolated Spaces\n\n${spaceList}\n\n*Use the Space dropdown in the top-left or sidebar to switch spaces.*`,
+          timestamp: Date.now(),
+        },
+      ]);
       return;
     }
 
@@ -273,9 +328,15 @@ export const App: React.FC = () => {
       return;
     }
 
-    if (root === "/tasks") {
+    if (root === "/tasks" || root === "/task") {
       setDrawerOpen(true);
       setDrawerTab("tasks");
+      return;
+    }
+
+    if (root === "/audit") {
+      setDrawerOpen(true);
+      setDrawerTab("audit");
       return;
     }
 
@@ -285,7 +346,7 @@ export const App: React.FC = () => {
         {
           id: `cmd-${Date.now()}`,
           role: "system",
-          content: `### RYU AI Developer Interaction Commands\n\n- **Natural Prompts**: Type any instruction (e.g. \`write basic python program\`).\n- **SCCA §18 Fast Path**: Simple instructions are stamped \`single_agent_eligible: true\` to execute without multi-agent team overhead.\n- **/status**: Inspect space health and dynamic attention budget ($N$).\n- **/approvals**: View pending capability approval gates.\n- **/stream**: Live pulse event timeline.\n- **/tasks**: Inspect execution plan DAG.\n- **/clear**: Clear conversational history.`,
+          content: `### RYU AI Developer Interaction Commands\n\n- **Natural Prompts**: Type any instruction (e.g. \`write basic python program\`).\n- **SCCA §18 Fast Path**: Simple instructions are stamped \`single_agent_eligible: true\` to execute without multi-agent team overhead.\n- **/status**: Inspect space health and dynamic attention budget ($N$).\n- **/spaces**: List isolated spaces and active workspace.\n- **/approvals**: View pending capability approval gates.\n- **/stream**: Live pulse event timeline.\n- **/tasks**: Inspect execution plan DAG.\n- **/audit**: View causal ancestor audit trees.\n- **/clear**: Clear conversational history.`,
           timestamp: Date.now(),
         },
       ]);
@@ -615,6 +676,33 @@ export const App: React.FC = () => {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            {/* Live LLM On/Off Switch */}
+            <button
+              onClick={toggleLiveLLM}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "4px 10px",
+                borderRadius: "14px",
+                background: liveLLMEnabled ? "rgba(16, 185, 129, 0.15)" : "rgba(255, 255, 255, 0.05)",
+                border: `1px solid ${liveLLMEnabled ? "var(--ryu-emerald-500)" : "var(--ryu-border)"}`,
+                color: liveLLMEnabled ? "var(--ryu-emerald-400)" : "var(--ryu-text-400)",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+              }}
+              title={
+                liveLLMEnabled
+                  ? `Live LLM is ACTIVE (${llmModel} via ${llmProvider}). Click to switch to Deterministic mode.`
+                  : "Deterministic Fast Mode is ACTIVE. Click to switch to Live LLM (Ollama/OpenAI)."
+              }
+            >
+              <Sparkles size={12} color={liveLLMEnabled ? "var(--ryu-emerald-400)" : "var(--ryu-text-400)"} />
+              <span>{liveLLMEnabled ? `LLM: ON (${llmModel})` : "LLM: OFF (Deterministic)"}</span>
+            </button>
+
             <button
               onClick={() => setIsPaletteOpen(true)}
               style={{
@@ -1275,7 +1363,135 @@ export const App: React.FC = () => {
               }}
             />
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
+            {/* Divider */}
+            <div style={{ height: "1px", background: "var(--ryu-border)", margin: "4px 0" }} />
+
+            {/* LLM Generation Section */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Sparkles size={16} color="var(--ryu-emerald-400)" />
+                <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--ryu-text-100)" }}>
+                  Real LLM Generation
+                </span>
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "12px", color: liveLLMEnabled ? "var(--ryu-emerald-400)" : "var(--ryu-text-400)" }}>
+                <input
+                  type="checkbox"
+                  checked={liveLLMEnabled}
+                  onChange={(e) => setLiveLLMEnabled(e.target.checked)}
+                  style={{ cursor: "pointer" }}
+                />
+                <span>{liveLLMEnabled ? "Active" : "Disabled"}</span>
+              </label>
+            </div>
+
+            <p style={{ fontSize: "11px", color: "var(--ryu-text-400)", lineHeight: 1.4 }}>
+              When enabled, prompts query your real local LLM (Ollama) or custom cloud model instead of fast deterministic templates.
+            </p>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+              <div>
+                <label style={{ fontSize: "11px", color: "var(--ryu-text-400)", display: "block", marginBottom: "4px" }}>
+                  Provider:
+                </label>
+                <select
+                  value={llmProvider}
+                  onChange={(e) => setLlmProvider(e.target.value)}
+                  style={{
+                    width: "100%",
+                    background: "var(--ryu-canvas)",
+                    border: "1px solid var(--ryu-border)",
+                    borderRadius: "6px",
+                    padding: "6px 8px",
+                    color: "var(--ryu-text-100)",
+                    fontSize: "12px",
+                  }}
+                >
+                  <option value="ollama">Ollama (Local)</option>
+                  <option value="openai">OpenAI / Compatible</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: "11px", color: "var(--ryu-text-400)", display: "block", marginBottom: "4px" }}>
+                  Model:
+                </label>
+                <input
+                  type="text"
+                  list="ryu-suggested-models"
+                  placeholder="e.g. qwen3.5:0.8b, qwen3.5:4b, gemma4:12b"
+                  value={llmModel}
+                  onChange={(e) => setLlmModel(e.target.value)}
+                  style={{
+                    width: "100%",
+                    background: "var(--ryu-canvas)",
+                    border: "1px solid var(--ryu-border)",
+                    borderRadius: "6px",
+                    padding: "6px 8px",
+                    color: "var(--ryu-text-100)",
+                    fontSize: "12px",
+                    boxSizing: "border-box",
+                  }}
+                />
+                <datalist id="ryu-suggested-models">
+                  <option value="qwen3.5:0.8b" />
+                  <option value="qwen3.5:4b" />
+                  <option value="gemma4:12b" />
+                  <option value="qwen2.5-coder:3b" />
+                  <option value="qwen3.5:2b" />
+                  <option value="llama3" />
+                  <option value="gpt-4o-mini" />
+                </datalist>
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: "11px", color: "var(--ryu-text-400)", display: "block", marginBottom: "4px" }}>
+                Base URL:
+              </label>
+              <input
+                type="text"
+                placeholder="http://localhost:11434"
+                value={llmBaseUrl}
+                onChange={(e) => setLlmBaseUrl(e.target.value)}
+                style={{
+                  width: "100%",
+                  background: "var(--ryu-canvas)",
+                  border: "1px solid var(--ryu-border)",
+                  borderRadius: "6px",
+                  padding: "6px 8px",
+                  color: "var(--ryu-text-100)",
+                  fontSize: "12px",
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+
+            {llmProvider === "openai" && (
+              <div>
+                <label style={{ fontSize: "11px", color: "var(--ryu-text-400)", display: "block", marginBottom: "4px" }}>
+                  API Key:
+                </label>
+                <input
+                  type="password"
+                  placeholder="sk-..."
+                  value={llmApiKey}
+                  onChange={(e) => setLlmApiKey(e.target.value)}
+                  style={{
+                    width: "100%",
+                    background: "var(--ryu-canvas)",
+                    border: "1px solid var(--ryu-border)",
+                    borderRadius: "6px",
+                    padding: "6px 8px",
+                    color: "var(--ryu-text-100)",
+                    fontSize: "12px",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "12px" }}>
               <button
                 onClick={() => setShowSettings(false)}
                 style={{
@@ -1291,8 +1507,20 @@ export const App: React.FC = () => {
                 Cancel
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   api.setDaemonToken(tokenInput.trim());
+                  localStorage.setItem("ryu_live_llm", String(liveLLMEnabled));
+                  try {
+                    await api.setLLMConfig({
+                      enabled: liveLLMEnabled,
+                      provider: llmProvider,
+                      base_url: llmBaseUrl,
+                      model: llmModel,
+                      api_key: llmApiKey || undefined,
+                    });
+                  } catch (e: any) {
+                    console.error("Failed to save LLM config:", e);
+                  }
                   setShowSettings(false);
                   refreshState();
                 }}

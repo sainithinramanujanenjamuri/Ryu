@@ -107,6 +107,12 @@ class DaemonRequestHandler(BaseHTTPRequestHandler):
             self._send_json_response({"spaces": spaces})
             return
 
+        # /api/v1/config/llm
+        if path == "/api/v1/config/llm":
+            from channels.synthesizer import get_llm_config
+            self._send_json_response(get_llm_config())
+            return
+
         # /api/v1/spaces/{space_id}/attention
         m_att = re.match(r"^/api/v1/spaces/([^/]+)/attention$", path)
         if m_att:
@@ -201,6 +207,19 @@ class DaemonRequestHandler(BaseHTTPRequestHandler):
             self._handle_submit_decision(space_id, request_id, payload)
             return
 
+        # /api/v1/config/llm
+        if path == "/api/v1/config/llm":
+            from channels.synthesizer import set_llm_config
+            updated = set_llm_config(
+                enabled=payload.get("enabled"),
+                provider=payload.get("provider"),
+                base_url=payload.get("base_url"),
+                model=payload.get("model"),
+                api_key=payload.get("api_key"),
+            )
+            self._send_json_response({"success": True, "config": updated})
+            return
+
         # /api/v1/spaces/{space_id}/prompt
         m_prompt = re.match(r"^/api/v1/spaces/([^/]+)/prompt$", path)
         if m_prompt:
@@ -274,6 +293,7 @@ class DaemonRequestHandler(BaseHTTPRequestHandler):
         command_id = str(payload.get("command_id") or f"cmd-{int(time.time() * 1000)}")
         params = payload.get("params", {})
         constraints = payload.get("constraints", [])
+        live_llm = payload.get("live_llm")
 
         command = Command(
             command_id=command_id,
@@ -291,7 +311,7 @@ class DaemonRequestHandler(BaseHTTPRequestHandler):
         exec_mode = "direct_single_agent" if single_agent else "multi_agent_team"
 
         # Synthesize conversational response
-        response_text = self._synthesize_prompt_response(prompt, space_id, goal_spec)
+        response_text = self._synthesize_prompt_response(prompt, space_id, goal_spec, live_llm=live_llm)
 
         self._send_json_response({
             "command_id": command_id,
@@ -305,11 +325,17 @@ class DaemonRequestHandler(BaseHTTPRequestHandler):
             "status": "completed",
         })
 
-    def _synthesize_prompt_response(self, prompt: str, space_id: str, goal_spec: Any) -> str:
+    def _synthesize_prompt_response(
+        self,
+        prompt: str,
+        space_id: str,
+        goal_spec: Any,
+        live_llm: bool | None = None,
+    ) -> str:
         """Synthesize a structured markdown response fulfilling the prompt under SCCA §18."""
         from channels.synthesizer import synthesize_response
 
-        return synthesize_response(prompt, space_id, goal_spec)
+        return synthesize_response(prompt, space_id, goal_spec, live_llm=live_llm)
 
     def _handle_sse_stream(self, space_id: str) -> None:
         """Stream real-time pulses for space via Server-Sent Events."""

@@ -8,22 +8,137 @@ spec §2, §4, §18 — Phase 8.5
 
 from __future__ import annotations
 
+import os
 import re
+import uuid
 from typing import Any
 
+from llm.provider import LiveHTTPLLMProvider, LLMRequest
 
-def synthesize_response(prompt: str, space_id: str, goal_spec: Any | None = None) -> str:
-    """Generate a clean, structured response fulfilling the user's prompt."""
+# Global LLM generation configuration
+_LLM_CONFIG: dict[str, Any] = {
+    "enabled": os.environ.get("RYU_LIVE_LLM", "0") in ("1", "true", "True"),
+    "provider": os.environ.get("RYU_LLM_PROVIDER", "ollama"),
+    "base_url": os.environ.get("RYU_LLM_BASE_URL", "http://localhost:11434"),
+    "model": os.environ.get("RYU_LLM_MODEL", "qwen3.5:4b"),
+    "api_key": os.environ.get("RYU_LLM_API_KEY", ""),
+}
+
+
+def get_llm_config() -> dict[str, Any]:
+    cfg = dict(_LLM_CONFIG)
+    if cfg["api_key"]:
+        cfg["api_key_masked"] = (
+            cfg["api_key"][:4] + "..." + cfg["api_key"][-4:]
+            if len(cfg["api_key"]) > 8
+            else "***"
+        )
+    else:
+        cfg["api_key_masked"] = ""
+    return cfg
+
+
+def set_llm_config(
+    enabled: bool | None = None,
+    provider: str | None = None,
+    base_url: str | None = None,
+    model: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    if enabled is not None:
+        _LLM_CONFIG["enabled"] = bool(enabled)
+    if provider is not None:
+        _LLM_CONFIG["provider"] = str(provider)
+    if base_url is not None:
+        _LLM_CONFIG["base_url"] = str(base_url)
+    if model is not None:
+        _LLM_CONFIG["model"] = str(model)
+    if api_key is not None:
+        _LLM_CONFIG["api_key"] = str(api_key)
+    return get_llm_config()
+
+
+def synthesize_response(
+    prompt: str,
+    space_id: str,
+    goal_spec: Any | None = None,
+    live_llm: bool | None = None,
+) -> str:
+    """Generate a response fulfilling the prompt (via Live LLM or Deterministic)."""
     clean_prompt = prompt.strip()
     # Strip optional surrounding angle brackets e.g. <what is AI?> -> what is AI?
     if clean_prompt.startswith("<") and clean_prompt.endswith(">"):
         clean_prompt = clean_prompt[1:-1].strip()
 
-    lower = clean_prompt.lower()
     goal_id = getattr(goal_spec, "goal_id", "direct-prompt")
     single_agent = getattr(goal_spec, "single_agent_eligible", True)
     caps_list = getattr(goal_spec, "required_capabilities", ["general.compute"])
     caps_str = ", ".join(caps_list) if caps_list else "general.compute"
+
+    # Check whether Live LLM generation is requested
+    should_use_live = live_llm if live_llm is not None else _LLM_CONFIG["enabled"]
+    if should_use_live:
+        model = _LLM_CONFIG["model"]
+        provider_name = _LLM_CONFIG["provider"]
+        provider = LiveHTTPLLMProvider(
+            base_url=_LLM_CONFIG["base_url"],
+            api_key=_LLM_CONFIG["api_key"],
+            model=model,
+            timeout=120.0,
+            provider_name=provider_name,
+        )
+        req = LLMRequest(
+            request_id=f"llm-{uuid.uuid4().hex[:12]}",
+            correlation_id=goal_id,
+            space_id=space_id,
+            agent_id="space-assistant",
+            model=model,
+            provider=provider_name,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        f"You are RYU AI, an advanced cognitive architecture and autonomous agent operating inside Space '{space_id}' "
+                        f"under the Space-Centric Cognitive Architecture (SCCA).\n"
+                        f"Guidelines:\n"
+                        f"1. Interpret user intent flexibly, resolving typos or shorthand naturally (e.g., 'sit', 'wed sit', 'websit' mean 'website / webpage').\n"
+                        f"2. When the user asks to build, create, or design a website, webpage, landing page, app, or tool, ALWAYS generate the complete, self-contained, high-quality, and modern HTML/CSS/JavaScript code in a clean markdown code block.\n"
+                        f"3. Never refuse with disclaimers like 'I cannot build websites' or 'I am just a text assistant' — you are an engineer and software generator, so write and deliver the code directly.\n"
+                        f"4. Format all responses cleanly in Markdown with insightful explanations."
+                    ),
+                },
+                {"role": "user", "content": clean_prompt},
+            ],
+        )
+        resp = provider.complete(req)
+        if resp.status == "ok" and resp.content.strip():
+            return (
+                f"{resp.content.strip()}\n\n"
+                f"---\n"
+                f"*⚡ Generated via Live LLM (`{model}` via `{provider_name}`) in Space `{space_id}`*"
+            )
+        else:
+            err_msg = resp.error.message if resp.error else "Model returned empty response"
+            det_res = _synthesize_deterministic(clean_prompt, space_id, goal_id, single_agent, caps_str)
+            return (
+                f"> [!WARNING]\n"
+                f"> **Live LLM Offline**: Failed to reach `{_LLM_CONFIG['base_url']}` ({err_msg}).\n"
+                f"> *Ensure Ollama is running (`ollama serve`) or check settings. Showing deterministic response below:*\n\n"
+                f"{det_res}"
+            )
+
+    return _synthesize_deterministic(clean_prompt, space_id, goal_id, single_agent, caps_str)
+
+
+def _synthesize_deterministic(
+    clean_prompt: str,
+    space_id: str,
+    goal_id: str,
+    single_agent: bool,
+    caps_str: str,
+) -> str:
+    """Generate a clean, structured deterministic response fulfilling the prompt."""
+    lower = clean_prompt.lower()
 
     # ─── 1. GREETINGS & CASUAL INTERACTION ────────────────────────────
     if lower in ("hi", "hello", "hey", "greetings", "hi ryu", "hello ryu", "hey ryu"):

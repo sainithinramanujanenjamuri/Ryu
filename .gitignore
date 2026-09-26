@@ -59,6 +59,8 @@ Thumbs.db
 # Logs & Temporary
 *.log
 scratch/
+scratch_*.txt
+*.zip
 
 # Node / Frontend
 node_modules/
