@@ -54,8 +54,26 @@ body {
   font-size: 13px;
   line-height: 1.5;
   overflow: hidden;
-  user-select: none;
+  user-select: text;
+  -webkit-user-select: text;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Allow text selection inside chat messages, code blocks, inputs, and documents */
+.chat-message,
+.markdown-content,
+.selectable-text,
+input,
+textarea,
+pre,
+code,
+p,
+li,
+table,
+blockquote,
+span.selectable {
+  user-select: text !important;
+  -webkit-user-select: text !important;
 }
 
 code, pre, .mono {

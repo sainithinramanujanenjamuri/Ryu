@@ -39,7 +39,16 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content }) => 
   }, [content]);
 
   return (
-    <div style={{ fontSize: "13px", lineHeight: "1.6", color: "var(--ryu-text-200)" }}>
+    <div
+      className="markdown-content selectable-text"
+      style={{
+        fontSize: "13px",
+        lineHeight: "1.6",
+        color: "var(--ryu-text-200)",
+        userSelect: "text",
+        WebkitUserSelect: "text",
+      }}
+    >
       {segments.map((seg, idx) => {
         if (seg.type === "code" && seg.code !== undefined) {
           return <CodeBlock key={idx} language={seg.lang || "code"} code={seg.code} />;

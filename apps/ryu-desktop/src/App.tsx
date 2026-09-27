@@ -3,9 +3,11 @@ import {
   Activity,
   ArrowUp,
   Bot,
+  Check,
   ChevronLeft,
   ChevronRight,
   Compass,
+  Copy,
   Key,
   PanelRightClose,
   PanelRightOpen,
@@ -67,6 +69,13 @@ export const App: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputPrompt, setInputPrompt] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+
+  const handleCopyMessage = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedMessageId(id);
+    setTimeout(() => setCopiedMessageId(null), 2000);
+  };
 
   // Slash commands
   const [showSlashMenu, setShowSlashMenu] = useState(false);
@@ -1033,15 +1042,40 @@ export const App: React.FC = () => {
                 return (
                   <div
                     key={msg.id}
+                    className="chat-message selectable-text"
                     style={{
                       display: "flex",
                       justifyContent: "flex-end",
-                      gap: "10px",
+                      alignItems: "flex-start",
+                      gap: "8px",
                       maxWidth: "800px",
                       alignSelf: "flex-end",
                       width: "100%",
+                      userSelect: "text",
+                      WebkitUserSelect: "text",
                     }}
                   >
+                    <button
+                      onClick={() => handleCopyMessage(msg.id, msg.content)}
+                      style={{
+                        background: "var(--ryu-card)",
+                        border: "1px solid var(--ryu-border)",
+                        borderRadius: "6px",
+                        padding: "5px 7px",
+                        color: copiedMessageId === msg.id ? "var(--ryu-emerald-500)" : "var(--ryu-text-400)",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        fontSize: "11px",
+                        marginTop: "4px",
+                        flexShrink: 0,
+                      }}
+                      title="Copy prompt"
+                    >
+                      {copiedMessageId === msg.id ? <Check size={12} /> : <Copy size={12} />}
+                      {copiedMessageId === msg.id && <span>Copied</span>}
+                    </button>
                     <div
                       style={{
                         background: "var(--ryu-card)",
@@ -1051,6 +1085,9 @@ export const App: React.FC = () => {
                         padding: "10px 14px",
                         color: "var(--ryu-text-100)",
                         fontSize: "13px",
+                        userSelect: "text",
+                        WebkitUserSelect: "text",
+                        cursor: "text",
                       }}
                     >
                       {msg.content}
@@ -1078,6 +1115,7 @@ export const App: React.FC = () => {
                 return (
                   <div
                     key={msg.id}
+                    className="chat-message selectable-text"
                     style={{
                       background: "rgba(24, 24, 27, 0.6)",
                       border: "1px dashed var(--ryu-border)",
@@ -1086,8 +1124,33 @@ export const App: React.FC = () => {
                       maxWidth: "800px",
                       margin: "0 auto",
                       width: "100%",
+                      userSelect: "text",
+                      WebkitUserSelect: "text",
+                      position: "relative",
                     }}
                   >
+                    <button
+                      onClick={() => handleCopyMessage(msg.id, msg.content)}
+                      style={{
+                        position: "absolute",
+                        top: "8px",
+                        right: "8px",
+                        background: "var(--ryu-card)",
+                        border: "1px solid var(--ryu-border)",
+                        borderRadius: "4px",
+                        padding: "3px 8px",
+                        color: copiedMessageId === msg.id ? "var(--ryu-emerald-500)" : "var(--ryu-text-400)",
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        fontSize: "11px",
+                      }}
+                      title="Copy system message"
+                    >
+                      {copiedMessageId === msg.id ? <Check size={11} /> : <Copy size={11} />}
+                      <span>{copiedMessageId === msg.id ? "Copied" : "Copy"}</span>
+                    </button>
                     <MarkdownMessage content={msg.content} />
                   </div>
                 );
@@ -1097,12 +1160,15 @@ export const App: React.FC = () => {
               return (
                 <div
                   key={msg.id}
+                  className="chat-message selectable-text"
                   style={{
                     display: "flex",
                     gap: "12px",
                     maxWidth: "850px",
                     width: "100%",
                     alignSelf: "flex-start",
+                    userSelect: "text",
+                    WebkitUserSelect: "text",
                   }}
                 >
                   <div
@@ -1122,31 +1188,64 @@ export const App: React.FC = () => {
                     <Bot size={18} color="var(--ryu-gold-500)" />
                   </div>
 
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    {/* SCCA Execution Badge */}
-                    {msg.goalId && (
-                      <div
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "2px 8px",
-                          borderRadius: "4px",
-                          background: "var(--ryu-card)",
-                          border: "1px solid var(--ryu-border)",
-                          fontSize: "11px",
-                          color: "var(--ryu-text-400)",
-                          marginBottom: "8px",
-                        }}
-                      >
-                        <Zap size={11} color="var(--ryu-gold-500)" />
-                        <span style={{ fontWeight: 600, color: "var(--ryu-gold-400)" }}>
-                          {msg.singleAgentEligible ? "Single-Agent Fast Path (SCCA §18)" : "Multi-Agent DAG"}
-                        </span>
-                        <span style={{ color: "var(--ryu-text-600)" }}>•</span>
-                        <span>{msg.goalId}</span>
-                      </div>
-                    )}
+                  <div style={{ flex: 1, minWidth: 0, userSelect: "text", WebkitUserSelect: "text" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px", gap: "8px" }}>
+                      {/* SCCA Execution Badge */}
+                      {msg.goalId ? (
+                        <div
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            padding: "2px 8px",
+                            borderRadius: "4px",
+                            background: "var(--ryu-card)",
+                            border: "1px solid var(--ryu-border)",
+                            fontSize: "11px",
+                            color: "var(--ryu-text-400)",
+                          }}
+                        >
+                          <Zap size={11} color="var(--ryu-gold-500)" />
+                          <span style={{ fontWeight: 600, color: "var(--ryu-gold-400)" }}>
+                            {msg.singleAgentEligible ? "Single-Agent Fast Path (SCCA §18)" : "Multi-Agent DAG"}
+                          </span>
+                          <span style={{ color: "var(--ryu-text-600)" }}>•</span>
+                          <span>{msg.goalId}</span>
+                        </div>
+                      ) : <div />}
+
+                      {msg.status !== "loading" && (
+                        <button
+                          onClick={() => handleCopyMessage(msg.id, msg.content)}
+                          style={{
+                            background: "var(--ryu-card)",
+                            border: "1px solid var(--ryu-border)",
+                            color: copiedMessageId === msg.id ? "var(--ryu-emerald-500)" : "var(--ryu-text-400)",
+                            cursor: "pointer",
+                            padding: "3px 8px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            borderRadius: "4px",
+                            fontSize: "11px",
+                            marginLeft: "auto",
+                          }}
+                          title="Copy response"
+                        >
+                          {copiedMessageId === msg.id ? (
+                            <>
+                              <Check size={11} />
+                              <span>Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={11} />
+                              <span>Copy</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
 
                     {msg.status === "loading" ? (
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--ryu-text-400)" }}>
