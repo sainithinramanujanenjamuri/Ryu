@@ -29,7 +29,7 @@ v2.0.0  = Major release (breaking architectural changes requiring formal ADR)
 | Version | Release Date | Git Commit | Git Tag | Verification Gate | Tests Passed | ADR Range | Project Memory | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **v1.0.0** | 2026-09-24 | `8ce151a` | `v1.0.0` | **GATE: PASS** (V1-001..V1-006) | 649 pass, 1 skip, 0 fail | ADR-0001..0039 | `0014-v1-final-release.md` | **PRODUCTION RELEASE** |
-| **v1.0.1** | 2026-09-27 | `HEAD` | `v1.0.1` | **GATE: PASS** (DESKTOP-001..005) | 57 pass, 1 skip, 0 fail (channels) | ADR-0040 | `0016-v101-desktop-capability-exposure.md` | **CAPABILITY EXPOSURE RELEASE** |
+| **v1.0.1** | 2026-09-27 | `638d134` | `v1.0.1` | **GATE: PASS** (DESKTOP-001..005) | 71 pass, 1 skip, 0 fail (channels) | ADR-0040 | `0016-v101-desktop-capability-exposure.md` | **CAPABILITY EXPOSURE RELEASE** |
 
 ---
 
@@ -77,3 +77,47 @@ All six mandatory release criteria evaluated by `scripts/v1_release_gate.py` pas
 * **Master Gate Evidence:** [`build/v1_evidence/V1_GATE_RESULT.json`](file:///d:/RYU/build/v1_evidence/V1_GATE_RESULT.json)
 * **Release Report:** [`RYU_AI_v1.0_Final_Release_Report.html`](file:///d:/RYU/RYU_AI_v1.0_Final_Release_Report.html)
 * **Decisions:** [`adr/0001-monorepo-structure.md`](file:///d:/RYU/adr/0001-monorepo-structure.md) through [`adr/0039-restricted-node-tier-and-device-side-mdm-allow-lists.md`](file:///d:/RYU/adr/0039-restricted-node-tier-and-device-side-mdm-allow-lists.md)
+
+---
+
+### RYU AI v1.0.1
+
+* **Release Date:** September 27, 2026  
+* **Release Baseline Commit:** `638d134` (`feat(release): v1.0.1 Desktop Command Center capability exposure and zero-privilege preview`)  
+* **Release Status:** `RELEASE VERIFIED (GATE: PASS)`  
+* **Architecture Milestone:** Space-Centric Cognitive Architecture (SCCA) v1.0.1 Capability Exposure  
+
+#### Verification Summary (`docs/V1.0.1_RELEASE_VERIFICATION_REPORT.md`)
+
+All thirteen mandatory release criteria passed with strict Boolean AND logic:
+
+| Gate Code | Evaluation Category | Status | Key Proof Metric | Report Path |
+|:---|:---|:---:|:---|:---|
+| **GATE-01** | Full Repository Regression | **PASS** | 664 passed, 1 skipped, 0 failed in 104.52s against real PostgreSQL 16 & Redis 7 | `docs/V1.0.1_RELEASE_VERIFICATION_REPORT.md` |
+| **GATE-02** | v1.0.1 Specific Tests | **PASS** | 71 passed, 1 skipped, 0 failed in `channels/tests` | `docs/V1.0.1_RELEASE_VERIFICATION_REPORT.md` |
+| **GATE-03** | Space Isolation Battery | **PASS** | Zero cross-space leakage across history, files, artifacts, memory | `docs/V1.0.1_RELEASE_VERIFICATION_REPORT.md` |
+| **GATE-04** | Authority Boundary | **PASS** | Desktop UI remains unprivileged Channel/Client; forged HMACs rejected | `docs/V1.0.1_RELEASE_VERIFICATION_REPORT.md` |
+| **GATE-05** | HTML Sandbox Security | **PASS** | `<iframe sandbox="allow-scripts">` strictly without `allow-same-origin` | `docs/V1.0.1_RELEASE_VERIFICATION_REPORT.md` |
+| **GATE-06** | File Ingress Security | **PASS** | Traversal, oversized (>2MB), and non-whitelisted blocked; taint emitted | `docs/V1.0.1_RELEASE_VERIFICATION_REPORT.md` |
+| **GATE-07** | Artifact Security | **PASS** | SHA-256 byte integrity verified, cross-space traversal returns 404 | `docs/V1.0.1_RELEASE_VERIFICATION_REPORT.md` |
+| **GATE-08** | History Architecture | **PASS** | PulseStore is authoritative, JSONL is CQRS projection cache | `docs/V1.0.1_RELEASE_VERIFICATION_REPORT.md` |
+| **GATE-09** | HTML Auto-Extraction | **PASS** | Deterministic extraction on turn save, whitespace/empty blocks skipped | `docs/V1.0.1_RELEASE_VERIFICATION_REPORT.md` |
+| **GATE-10** | Persistence & Restart | **PASS** | State survives complete daemon restart | `docs/V1.0.1_RELEASE_VERIFICATION_REPORT.md` |
+| **GATE-11** | Desktop E2E Live Flow | **PASS** | Unmocked full roundtrip against live daemon | `docs/V1.0.1_RELEASE_VERIFICATION_REPORT.md` |
+| **GATE-12** | Core Independence & Contracts | **PASS** | `dep_guard.py` PASS (0 forbidden imports), `contract_sync.py` PASS (38 pulse types) | `docs/V1.0.1_RELEASE_VERIFICATION_REPORT.md` |
+| **GATE-13** | Desktop Build & Binaries | **PASS** | `npm run build` PASS (242.30 kB bundle), Tauri `cargo check` PASS (16.94s) | `docs/V1.0.1_RELEASE_VERIFICATION_REPORT.md` |
+
+#### Architectural Scope Delivered (Work Packages 1–6)
+
+1. **WP-1 — Conversation History Rehydration:** Durable PulseStore authoritative playback with space-local CQRS JSONL cache (`GET /api/v1/spaces/{space_id}/history`).
+2. **WP-2 — Space Lifecycle & Dynamic Switching:** Full multi-space creation, listing, switching, and inspection without daemon restarts (`GET /api/v1/spaces`, `POST /api/v1/spaces`, `GET /api/v1/spaces/{id}`).
+3. **WP-3 — Zero-Privilege Sandboxed HTML Preview:** Pure `sandbox="allow-scripts"` isolation forbidding `allow-same-origin` for generated HTML artifacts and message blocks.
+4. **WP-4 — Space Artifact Explorer:** Content-addressed SHA-256 artifact indexing, cross-space isolation, search, filtering, download, and sandboxed preview (`GET /api/v1/spaces/{id}/artifacts`, `GET /api/v1/spaces/{id}/artifacts/{id}/content`).
+5. **WP-5 — Sandboxed File Ingress with Taint Tracking:** Strictly validated ($\le 2$MB limit, text format whitelist, path traversal defense) file ingress emitting `security.taint.detected` pulses (`POST /api/v1/spaces/{id}/files`).
+6. **WP-6 — Read-Only System Visibility:** Zero-authority node inspection (`GET /api/v1/nodes`) and space memory reflection (`GET /api/v1/spaces/{id}/memory`) preserving SCCA Law 4.
+
+#### Key Documentation & Evidence Links
+* **Release Narrative:** [`PROJECT_MEMORY/0016-v101-desktop-capability-exposure.md`](file:///d:/RYU/PROJECT_MEMORY/0016-v101-desktop-capability-exposure.md)
+* **Master Specification:** [`docs/V1.0.1_DESKTOP_COMMAND_CENTER_SPEC.md`](file:///d:/RYU/docs/V1.0.1_DESKTOP_COMMAND_CENTER_SPEC.md)
+* **Release Verification Report:** [`docs/V1.0.1_RELEASE_VERIFICATION_REPORT.md`](file:///d:/RYU/docs/V1.0.1_RELEASE_VERIFICATION_REPORT.md)
+* **Decisions:** [`adr/0040-desktop-capability-exposure-artifact-lifecycle-and-sandbox-preview.md`](file:///d:/RYU/adr/0040-desktop-capability-exposure-artifact-lifecycle-and-sandbox-preview.md)
