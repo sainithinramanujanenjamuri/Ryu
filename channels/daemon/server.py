@@ -91,7 +91,7 @@ class DaemonRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/v1/health":
             self._send_json_response({
                 "status": "healthy",
-                "version": "0.1.0",
+                "version": "1.0.1",
                 "phase": "8.5",
                 "authenticated": False,
             })

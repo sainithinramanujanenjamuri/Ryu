@@ -1,5 +1,6 @@
-# RYU AI Command Center - Unified Services Preflight
-# Checks infrastructure -> Starts Channel Daemon
+param(
+    [switch]$RestartDaemon
+)
 
 $ErrorActionPreference = "Continue"
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -31,7 +32,16 @@ $daemonRunning = $false
 try {
     $res = Invoke-RestMethod -Uri "http://127.0.0.1:8420/api/v1/health" -TimeoutSec 2 -ErrorAction Stop
     if ($res.status -eq "healthy") {
-        $daemonRunning = $true
+        if ($RestartDaemon -or ($res.version -and $res.version -ne "1.0.1")) {
+            Write-Host "      Restarting Channel Daemon (current: v$($res.version), target: v1.0.1)..." -ForegroundColor Yellow
+            $conns = Get-NetTCPConnection -LocalPort 8420 -ErrorAction SilentlyContinue
+            foreach ($c in $conns) {
+                Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
+            }
+            Start-Sleep -Milliseconds 800
+        } else {
+            $daemonRunning = $true
+        }
     }
 } catch {}
 
