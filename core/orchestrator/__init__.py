@@ -5,6 +5,18 @@ docs/Architecture §4, §16, and ROADMAP.md Phase 4.
 """
 
 from core.orchestrator.adapter import Adapter
+from core.orchestrator.dispatch_model import (
+    CrossSpaceViolationError,
+    DeterministicDispatcher,
+    DispatchAction,
+    DispatchAttempt,
+    DispatchDecision,
+    GoalEvaluatorProtocol,
+    TaskDispatcherProtocol,
+    VerifiedExecutionEvidence,
+    WorkerInvokerProtocol,
+    compute_dispatch_idempotency_key,
+)
 from core.orchestrator.goal_analyzer import Command, GoalAnalyzer, GoalSpec
 from core.orchestrator.monitor import Monitor, TimelineState
 from core.orchestrator.orchestrator import OrchestratorSession, SpaceOrchestrator
@@ -16,7 +28,13 @@ __all__ = [
     "Adapter",
     "AssignmentTable",
     "Command",
+    "CrossSpaceViolationError",
+    "DeterministicDispatcher",
+    "DispatchAction",
+    "DispatchAttempt",
+    "DispatchDecision",
     "GoalAnalyzer",
+    "GoalEvaluatorProtocol",
     "GoalSpec",
     "Monitor",
     "OrchestratorSession",
@@ -26,6 +44,11 @@ __all__ = [
     "ReconcileResult",
     "SpaceOrchestrator",
     "TaskAssignment",
+    "TaskDispatcherProtocol",
     "TeamBuilder",
     "TimelineState",
+    "VerifiedExecutionEvidence",
+    "WorkerInvokerProtocol",
+    "compute_dispatch_idempotency_key",
 ]
+

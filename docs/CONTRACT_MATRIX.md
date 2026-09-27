@@ -590,6 +590,17 @@ If the architecture does not answer it, an ADR is required before implementation
 | DESKTOP-004 | Space-Scoped Artifact Lifecycle       | SHA-256 digested artifacts queryable, viewable, and downloadable per space.   | Daemon + Desktop UI        | `channels/tests/test_daemon_v101.py`, `channels/tests/test_v101_hardening.py` | v1.0.1  | `GATE_VERIFIED` |
 | DESKTOP-005 | Sandboxed File Ingress with Taint     | Filename sanitization, <=2MB bound, path traversal guard, and taint tagging.  | Daemon + Desktop UI        | `channels/tests/test_daemon_v101.py`, `channels/tests/test_v101_hardening.py` | v1.0.1  | `GATE_VERIFIED` |
 
+---
+
+# 30D. Phase 12 Execution Engine & Dispatch Contracts
+
+| ID           | Contract                                                | Required Invariant                                                                                                     | Implementation Boundary                      | Harness / Evidence                                                               | Roadmap    | Status          |
+| ------------ | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------- | ---------- | --------------- |
+| DISPATCH-001 | Topological Task Readiness & Dependency Resolution      | Ready tasks identified deterministically; unready tasks await dependencies; cycles & missing dependencies rejected.     | `core/plans/task_graph.py`, `core/orchestrator/dispatch_model.py` | `core/orchestrator/tests/test_phase12_dispatch_contracts.py`                   | Phase 12.1 | `UNIT_VERIFIED` |
+| DISPATCH-002 | Deterministic Task Lifecycle State Machine              | State transitions follow `LEGAL_TRANSITIONS` strictly; illegal transitions raise `IllegalStateTransitionError`.         | `core/plans/task_graph.py`                   | `core/orchestrator/tests/test_phase12_dispatch_contracts.py`                   | Phase 12.1 | `UNIT_VERIFIED` |
+| DISPATCH-003 | Exactly-Once Dispatch Semantics & Idempotency           | Deterministic idempotency key: `sha256(space_id:plan_version:task_id:attempt)`; duplicate in-flight attempts deduplicated. | `core/orchestrator/dispatch_model.py`        | `core/orchestrator/tests/test_phase12_dispatch_contracts.py`                   | Phase 12.1 | `UNIT_VERIFIED` |
+| DISPATCH-004 | Execution Evidence Verification                         | Completed tasks must produce verified execution evidence (artifact SHA-256, structured output, telemetry, exit code).   | `core/orchestrator/dispatch_model.py`        | `core/orchestrator/tests/test_phase12_dispatch_contracts.py`                   | Phase 12.1 | `UNIT_VERIFIED` |
+| DISPATCH-005 | Strict Core Independence & Protocol Isolation          | Dispatcher and graph coordinate workers via protocols (`WorkerInvokerProtocol`); 0 higher-layer imports in `core/`.    | `core/orchestrator/dispatch_model.py`, `scripts/dep_guard.py` | `core/orchestrator/tests/test_phase12_dispatch_contracts.py`, `scripts/dep_guard.py` | Phase 12.1 | `UNIT_VERIFIED` |
 
 ---
 

@@ -1535,3 +1535,73 @@ spec_map:
     harness_case: "harness/cases/v1_release/test_v1_replay.py"
     roadmap_phase: 12
     evidence_state: "GATE_VERIFIED"
+
+  # -----------------------------------------------------------------------
+  # Phase 12.1 — Dispatcher Contracts & Task Graph Model
+  # -----------------------------------------------------------------------
+
+  - id: DISPATCH-001
+    title: "Topological Task Readiness & Dependency Resolution"
+    architecture_section: "docs/PHASE_12_EXECUTION_ENGINE_SPEC.md §4, CONTRACT_MATRIX §30D"
+    acceptance_criterion: >
+      Ready tasks identified deterministically; unready tasks await dependencies;
+      cycles & missing dependencies rejected synchronously.
+    contract:
+      file: "core/plans/task_graph.py"
+      rule: "topological sort using Kahn's algorithm and dependency validation"
+    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py"
+    roadmap_phase: 12
+    evidence_state: "UNIT_VERIFIED"
+
+  - id: DISPATCH-002
+    title: "Deterministic Task Lifecycle State Machine"
+    architecture_section: "docs/PHASE_12_EXECUTION_ENGINE_SPEC.md §3, CONTRACT_MATRIX §30D"
+    acceptance_criterion: >
+      Task state transitions follow LEGAL_TRANSITIONS strictly; illegal transitions
+      raise IllegalStateTransitionError.
+    contract:
+      file: "core/plans/task_graph.py"
+      rule: "state machine transition matrix with 11 primary states"
+    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py"
+    roadmap_phase: 12
+    evidence_state: "UNIT_VERIFIED"
+
+  - id: DISPATCH-003
+    title: "Exactly-Once Dispatch Semantics & Idempotency"
+    architecture_section: "docs/PHASE_12_EXECUTION_ENGINE_SPEC.md §5, CONTRACT_MATRIX §30D"
+    acceptance_criterion: >
+      Deterministic idempotency key sha256(space_id:plan_version:task_id:attempt);
+      duplicate in-flight attempts deduplicated.
+    contract:
+      file: "core/orchestrator/dispatch_model.py"
+      rule: "compute_dispatch_idempotency_key and Dispatcher attempt tracking"
+    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py"
+    roadmap_phase: 12
+    evidence_state: "UNIT_VERIFIED"
+
+  - id: DISPATCH-004
+    title: "Execution Evidence Verification"
+    architecture_section: "docs/PHASE_12_EXECUTION_ENGINE_SPEC.md §5, CONTRACT_MATRIX §30D"
+    acceptance_criterion: >
+      Completed tasks must produce verified execution evidence (artifact SHA-256,
+      structured output, telemetry, exit code); unverified evidence rejected.
+    contract:
+      file: "core/orchestrator/dispatch_model.py"
+      rule: "VerifiedExecutionEvidence validation"
+    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py"
+    roadmap_phase: 12
+    evidence_state: "UNIT_VERIFIED"
+
+  - id: DISPATCH-005
+    title: "Strict Core Independence & Protocol Isolation"
+    architecture_section: "AGENTS.md §7, docs/PHASE_12_EXECUTION_ENGINE_SPEC.md §2"
+    acceptance_criterion: >
+      Dispatcher and graph coordinate workers via protocols (WorkerInvokerProtocol);
+      zero higher-layer imports in core/.
+    contract:
+      file: "core/orchestrator/dispatch_model.py"
+      rule: "abstract protocols for execution, zero concrete worker imports"
+    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py"
+    roadmap_phase: 12
+    evidence_state: "UNIT_VERIFIED"
+
