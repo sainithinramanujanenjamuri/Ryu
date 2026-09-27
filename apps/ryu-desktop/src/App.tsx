@@ -531,8 +531,19 @@ export const App: React.FC = () => {
             borderBottom: "1px solid var(--ryu-border)",
           }}
         >
-          {!sidebarCollapsed && (
+          {!sidebarCollapsed ? (
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <img
+                src="/app-icon.png"
+                alt="RYU AI Logo"
+                style={{
+                  width: "22px",
+                  height: "22px",
+                  borderRadius: "5px",
+                  border: "1px solid var(--ryu-border)",
+                  objectFit: "cover",
+                }}
+              />
               <span
                 style={{
                   fontWeight: 800,
@@ -557,6 +568,18 @@ export const App: React.FC = () => {
                 Phase 8.5
               </span>
             </div>
+          ) : (
+            <img
+              src="/app-icon.png"
+              alt="RYU AI Logo"
+              style={{
+                width: "24px",
+                height: "24px",
+                borderRadius: "5px",
+                border: "1px solid var(--ryu-border)",
+                objectFit: "cover",
+              }}
+            />
           )}
 
           <button
