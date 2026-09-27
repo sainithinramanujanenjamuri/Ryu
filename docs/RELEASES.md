@@ -29,7 +29,8 @@ v2.0.0  = Major release (breaking architectural changes requiring formal ADR)
 | Version | Release Date | Git Commit | Git Tag | Verification Gate | Tests Passed | ADR Range | Project Memory | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **v1.0.0** | 2026-09-24 | `8ce151a` | `v1.0.0` | **GATE: PASS** (V1-001..V1-006) | 649 pass, 1 skip, 0 fail | ADR-0001..0039 | `0014-v1-final-release.md` | **PRODUCTION RELEASE** |
-| **v1.0.1** | 2026-09-27 | `638d134` | `v1.0.1` | **GATE: PASS** (DESKTOP-001..005) | 71 pass, 1 skip, 0 fail (channels) | ADR-0040 | `0016-v101-desktop-capability-exposure.md` | **CAPABILITY EXPOSURE RELEASE** |
+| **v1.0.1** | 2026-09-28 | `85b5036` | `v1.0.1` | **GATE: PASS** (DESKTOP-001..005) | 72 pass, 1 skip, 0 fail (channels) | ADR-0040 | `0016-v101-desktop-capability-exposure.md` | **CAPABILITY EXPOSURE RELEASE** |
+
 
 ---
 
@@ -82,10 +83,12 @@ All six mandatory release criteria evaluated by `scripts/v1_release_gate.py` pas
 
 ### RYU AI v1.0.1
 
-* **Release Date:** September 27, 2026  
-* **Release Baseline Commit:** `638d134` (`feat(release): v1.0.1 Desktop Command Center capability exposure and zero-privilege preview`)  
+* **Release Date:** September 28, 2026  
+* **Release Baseline Commit:** `85b5036` (`fix(desktop): bypass Windows icon cache by linking ryu_crest.ico in Desktop and Start Menu`)  
+* **Initial Exposure Commit:** `638d134` (`feat(release): v1.0.1 Desktop Command Center capability exposure and zero-privilege preview`)  
 * **Release Status:** `RELEASE VERIFIED (GATE: PASS)`  
 * **Architecture Milestone:** Space-Centric Cognitive Architecture (SCCA) v1.0.1 Capability Exposure  
+
 
 #### Verification Summary (`docs/V1.0.1_RELEASE_VERIFICATION_REPORT.md`)
 

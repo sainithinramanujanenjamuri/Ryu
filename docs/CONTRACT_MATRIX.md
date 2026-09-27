@@ -584,11 +584,12 @@ If the architecture does not answer it, an ADR is required before implementation
 
 | ID          | Contract                              | Required Invariant                                                            | Implementation Boundary    | Harness / Evidence                  | Roadmap | Status          |
 | ----------- | ------------------------------------- | ----------------------------------------------------------------------------- | -------------------------- | ----------------------------------- | ------- | --------------- |
-| DESKTOP-001 | Space Lifecycle & Switching Protocol  | Strict space isolation; creation and switching mediated by Channel Daemon.   | Daemon + Desktop UI        | `channels/tests/test_daemon.py`     | v1.0.1  | `SPECIFIED`     |
-| DESKTOP-002 | Conversation History Rehydration     | Dialogue turns deterministically rehydrated from space pulses on load.        | Daemon + Desktop UI        | `channels/tests/test_daemon.py`     | v1.0.1  | `SPECIFIED`     |
-| DESKTOP-003 | Zero-Privilege HTML Preview Sandbox   | `sandbox="allow-scripts"` strictly without `allow-same-origin` or Tauri IPC. | Desktop UI (`MarkdownMessage`)| `channels/tests/test_daemon.py` | v1.0.1  | `SPECIFIED`     |
-| DESKTOP-004 | Space-Scoped Artifact Lifecycle       | SHA-256 digested artifacts queryable, viewable, and downloadable per space.   | Daemon + Desktop UI        | `channels/tests/test_daemon.py`     | v1.0.1  | `SPECIFIED`     |
-| DESKTOP-005 | Sandboxed File Ingress with Taint     | Filename sanitization, <=2MB bound, path traversal guard, and taint tagging.  | Daemon + Desktop UI        | `channels/tests/test_daemon.py`     | v1.0.1  | `SPECIFIED`     |
+| DESKTOP-001 | Space Lifecycle & Switching Protocol  | Strict space isolation; creation and switching mediated by Channel Daemon.   | Daemon + Desktop UI        | `channels/tests/test_daemon_v101.py`, `channels/tests/test_v101_hardening.py` | v1.0.1  | `GATE_VERIFIED` |
+| DESKTOP-002 | Conversation History Rehydration     | Dialogue turns deterministically rehydrated from space pulses on load.        | Daemon + Desktop UI        | `channels/tests/test_daemon_v101.py`, `channels/tests/test_v101_hardening.py` | v1.0.1  | `GATE_VERIFIED` |
+| DESKTOP-003 | Zero-Privilege HTML Preview Sandbox   | `sandbox="allow-scripts"` strictly without `allow-same-origin` or Tauri IPC. | Desktop UI (`MarkdownMessage`)| `channels/tests/test_v101_hardening.py` | v1.0.1  | `GATE_VERIFIED` |
+| DESKTOP-004 | Space-Scoped Artifact Lifecycle       | SHA-256 digested artifacts queryable, viewable, and downloadable per space.   | Daemon + Desktop UI        | `channels/tests/test_daemon_v101.py`, `channels/tests/test_v101_hardening.py` | v1.0.1  | `GATE_VERIFIED` |
+| DESKTOP-005 | Sandboxed File Ingress with Taint     | Filename sanitization, <=2MB bound, path traversal guard, and taint tagging.  | Daemon + Desktop UI        | `channels/tests/test_daemon_v101.py`, `channels/tests/test_v101_hardening.py` | v1.0.1  | `GATE_VERIFIED` |
+
 
 ---
 
