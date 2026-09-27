@@ -1,15 +1,22 @@
-# Creates a Windows Desktop shortcut for RYU AI Command Center
+# Creates a Windows Desktop and Start Menu shortcut for RYU AI Command Center
 $WshShell = New-Object -ComObject WScript.Shell
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $TargetPath = Join-Path $RepoRoot "launch_ryu.bat"
-$IconPath = Join-Path $RepoRoot "apps\ryu-desktop\src-tauri\icons\icon.ico"
+$IconPath = Join-Path $RepoRoot "apps\ryu-desktop\src-tauri\icons\ryu_crest.ico"
 
-$desktopLocations = @(
+# If ryu_crest.ico does not exist yet, copy from icon.ico
+$BaseIcon = Join-Path $RepoRoot "apps\ryu-desktop\src-tauri\icons\icon.ico"
+if (Test-Path $BaseIcon) {
+    Copy-Item $BaseIcon $IconPath -Force -ErrorAction SilentlyContinue
+}
+
+$targetLocations = @(
     [System.Environment]::GetFolderPath("Desktop"),
+    [System.Environment]::GetFolderPath("Programs"),
     [System.Environment]::GetFolderPath("CommonDesktopDirectory")
 ) | Select-Object -Unique
 
-foreach ($dest in $desktopLocations) {
+foreach ($dest in $targetLocations) {
     if (-not [string]::IsNullOrWhiteSpace($dest) -and (Test-Path $dest)) {
         try {
             $shortcutPath = Join-Path $dest "RYU AI Command Center.lnk"
@@ -21,7 +28,7 @@ foreach ($dest in $desktopLocations) {
                 $shortcut.IconLocation = "$IconPath,0"
             }
             $shortcut.Save()
-            Write-Host "Created Desktop shortcut: $shortcutPath" -ForegroundColor Green
+            Write-Host "Created shortcut: $shortcutPath" -ForegroundColor Green
         } catch {
             Write-Host "Could not create shortcut in $dest : $_" -ForegroundColor Yellow
         }
@@ -39,4 +46,5 @@ try {
         $type::SHChangeNotify(0x08000000, 0x0000, 0, 0) # SHCNE_ASSOCCHANGED
     }
 } catch {}
+
 
