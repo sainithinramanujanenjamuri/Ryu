@@ -11,6 +11,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
 
   const actions = [
     { id: "refresh", label: "Refresh Runtime State & Gates", shortcut: "R" },
+    { id: "create_space", label: "Create Isolated Space (SCCA §4)", shortcut: "N" },
+    { id: "artifacts", label: "Switch to Space Artifact Explorer", shortcut: "F" },
+    { id: "system", label: "Switch to System Visibility (Nodes & Memory)", shortcut: "S" },
     { id: "audit", label: "Switch to Audit Stream View", shortcut: "A" },
     { id: "timeline", label: "Switch to Pulse Timeline View", shortcut: "T" },
     { id: "tasks", label: "Switch to Task Graph View", shortcut: "P" },

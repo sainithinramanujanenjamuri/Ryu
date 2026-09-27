@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Code, Copy, Eye, Shield } from "lucide-react";
 
 interface MarkdownMessageProps {
   content: string;
@@ -50,7 +50,13 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content }) => 
   );
 };
 
-const CodeBlock: React.FC<{ language: string; code: string }> = ({ language, code }) => {
+export const CodeBlock: React.FC<{ language: string; code: string; defaultTab?: "code" | "preview" }> = ({
+  language,
+  code,
+  defaultTab = "code",
+}) => {
+  const isHtml = language.toLowerCase() === "html" || language.toLowerCase() === "htm";
+  const [activeTab, setActiveTab] = useState<"code" | "preview">(isHtml ? defaultTab : "code");
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -60,11 +66,55 @@ const CodeBlock: React.FC<{ language: string; code: string }> = ({ language, cod
   };
 
   return (
-    <div className="code-container" style={{ margin: "10px 0" }}>
-      <div className="code-header">
-        <span style={{ textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.5px" }}>
-          {language}
-        </span>
+    <div className="code-container" style={{ margin: "10px 0", borderRadius: "8px", overflow: "hidden", border: "1px solid var(--ryu-border)" }}>
+      <div className="code-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 12px", background: "var(--ryu-card-subtle)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.5px", fontSize: "11px", color: "var(--ryu-text-400)" }}>
+            {language}
+          </span>
+
+          {isHtml && (
+            <div style={{ display: "flex", background: "var(--ryu-card)", borderRadius: "4px", padding: "2px", border: "1px solid var(--ryu-border-subtle)" }}>
+              <button
+                onClick={() => setActiveTab("code")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  background: activeTab === "code" ? "var(--ryu-card-hover)" : "transparent",
+                  color: activeTab === "code" ? "var(--ryu-text-100)" : "var(--ryu-text-400)",
+                  border: "none",
+                  borderRadius: "3px",
+                  padding: "2px 6px",
+                  fontSize: "10px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <Code size={11} /> Code
+              </button>
+              <button
+                onClick={() => setActiveTab("preview")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  background: activeTab === "preview" ? "var(--ryu-card-hover)" : "transparent",
+                  color: activeTab === "preview" ? "var(--ryu-emerald-400)" : "var(--ryu-text-400)",
+                  border: "none",
+                  borderRadius: "3px",
+                  padding: "2px 6px",
+                  fontSize: "10px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <Eye size={11} /> Preview
+              </button>
+            </div>
+          )}
+        </div>
+
         <button
           onClick={handleCopy}
           style={{
@@ -85,9 +135,42 @@ const CodeBlock: React.FC<{ language: string; code: string }> = ({ language, cod
           {copied ? "Copied!" : "Copy"}
         </button>
       </div>
-      <pre className="code-body">
-        <code>{code}</code>
-      </pre>
+
+      {isHtml && activeTab === "preview" ? (
+        <div style={{ position: "relative", width: "100%", background: "#ffffff", borderTop: "1px solid var(--ryu-border)" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              padding: "4px 10px",
+              background: "#18181b",
+              borderBottom: "1px solid #27272a",
+              fontSize: "10px",
+              color: "var(--ryu-emerald-400)",
+            }}
+          >
+            <Shield size={11} />
+            <span>Zero-Privilege Sandbox (Isolated iframe, scripts enabled, same-origin denied)</span>
+          </div>
+          <iframe
+            sandbox="allow-scripts"
+            srcDoc={code}
+            style={{
+              width: "100%",
+              height: "280px",
+              border: "none",
+              display: "block",
+              backgroundColor: "#ffffff",
+            }}
+            title="Sandboxed HTML Preview"
+          />
+        </div>
+      ) : (
+        <pre className="code-body" style={{ margin: 0, padding: "12px", background: "var(--ryu-canvas)", overflowX: "auto" }}>
+          <code>{code}</code>
+        </pre>
+      )}
     </div>
   );
 };
@@ -177,4 +260,3 @@ function renderInlineFormatting(str: string): React.ReactNode {
     return part;
   });
 }
-

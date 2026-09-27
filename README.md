@@ -73,26 +73,24 @@ The dependency direction is strictly one-way. Deterministic core infrastructure 
 
 ---
 
-## Current Phase
+## Operational State & Release Baseline
 
 ```text
-Phase 0 — Repository Scaffold
+v1.0.0 — Production Release (Phases 0–11 Complete & Gate-Verified)
 ```
 
-Phase 0 establishes repository structure, contract registry, code-generation foundations, Rust workspace skeleton, and the initial deterministic Pulse Bus verification harness. No Phase 1+ runtime behavior is implemented.
+RYU AI v1.0.0 has passed the Master Release Gate battery (`V1-001` through `V1-006`) with 649 passing tests, 0 failures, 100% core independence, deterministic replay equivalence, and Desktop Command Center integration. See [`docs/RELEASES.md`](docs/RELEASES.md) for full release details.
 
 ---
 
-## Development Commands
+## Verification & Development Commands
 
 ```bash
-make setup      # Environment check & setup
-make contracts  # Contract synchronization check
-make codegen    # Execute code generators
-make test       # Run Phase 0 Pulse Bus unit tests
-make harness    # Run executable harness cases
-make lint       # Run Ruff linter and dependency guard
-make node       # Validate Rust workspace (cargo check & clippy)
-make all        # Execute full Phase 0 verification suite
+python scripts/contract_sync.py              # Verify pulse contract registry & codegen sync
+python scripts/dep_guard.py                  # Verify core/ AST import independence
+python scripts/v1_audit_governance.py        # Verify ADRs, pulse types, schemas, & matrix
+python scripts/v1_audit_spec_coverage.py     # Verify spec criteria & executable test mappings
+python scripts/v1_release_gate.py            # Execute complete v1.0 master release battery
+pytest                                       # Run full test suite (649 tests)
 ```
 

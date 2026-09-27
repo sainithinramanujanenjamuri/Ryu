@@ -1,4 +1,5 @@
 import React from "react";
+import { Plus } from "lucide-react";
 import { SpaceInfo } from "../types";
 
 interface TopBarProps {
@@ -7,6 +8,7 @@ interface TopBarProps {
   onSelectSpace: (spaceId: string) => void;
   isOnline: boolean;
   onOpenSettings: () => void;
+  onCreateSpace?: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -15,6 +17,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onSelectSpace,
   isOnline,
   onOpenSettings,
+  onCreateSpace,
 }) => {
   return (
     <header
@@ -75,6 +78,29 @@ export const TopBar: React.FC<TopBarProps> = ({
               </option>
             ))}
           </select>
+
+          {onCreateSpace && (
+            <button
+              onClick={onCreateSpace}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                background: "var(--ryu-black-700)",
+                border: "1px solid var(--ryu-black-600)",
+                color: "var(--ryu-gold-400)",
+                borderRadius: "4px",
+                padding: "4px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+              title="Create new isolated space"
+            >
+              <Plus size={12} />
+              <span>New Space</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -123,4 +149,3 @@ export const TopBar: React.FC<TopBarProps> = ({
     </header>
   );
 };
-

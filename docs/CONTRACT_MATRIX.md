@@ -569,14 +569,26 @@ If the architecture does not answer it, an ADR is required before implementation
 
 # 30B. v1.0 Release Verification Contracts
 
-| ID     | Contract                                | Required Invariant                                                            | Implementation Boundary    | Harness / Evidence                  | Roadmap | Status      |
-| ------ | --------------------------------------- | ----------------------------------------------------------------------------- | -------------------------- | ----------------------------------- | ------- | ----------- |
-| V1-001 | Dynamic Spec Coverage Audit             | Zero orphaned architecture criteria, zero orphaned spec entries, zero missing tests. | Verification Tooling       | `scripts/v1_audit_spec_coverage.py` | Release | `SPECIFIED` |
-| V1-002 | Core Independence Proof                 | Deterministic core has zero cognitive layer dependencies and AST + runtime isolation pass. | Dependency Guard           | `scripts/v1_verify_core_independence.py` | Release | `SPECIFIED` |
-| V1-003 | End-to-End Vertical Slice Execution     | Real human approval via token-hmac-v1, device execution, artifact creation, and pulse durability. | Verification Runner        | `scripts/v1_run_vertical_slice.py`  | Release | `SPECIFIED` |
-| V1-004 | Consolidated Security Battery           | All 12 mandatory security proofs pass consecutively without bypass.            | Security Test Suite        | `scripts/v1_run_security_regression.py` | Release | `SPECIFIED` |
-| V1-005 | Governance & Documentation Hygiene      | All 39 ADRs valid, all 38 pulse types registered, payload schemas complete.    | Governance Auditor         | `scripts/v1_audit_governance.py`    | Release | `SPECIFIED` |
-| V1-006 | Deterministic Replay Equivalence        | Exact artifact SHA-256 byte identity and structural causal replay equivalence. | Replay Verifier            | `scripts/v1_verify_replay.py`       | Release | `SPECIFIED` |
+| ID     | Contract                                | Required Invariant                                                            | Implementation Boundary    | Harness / Evidence                  | Roadmap | Status          |
+| ------ | --------------------------------------- | ----------------------------------------------------------------------------- | -------------------------- | ----------------------------------- | ------- | --------------- |
+| V1-001 | Dynamic Spec Coverage Audit             | Zero orphaned architecture criteria, zero orphaned spec entries, zero missing tests. | Verification Tooling       | `scripts/v1_audit_spec_coverage.py` | Release | `GATE_VERIFIED` |
+| V1-002 | Core Independence Proof                 | Deterministic core has zero cognitive layer dependencies and AST + runtime isolation pass. | Dependency Guard           | `scripts/v1_verify_core_independence.py` | Release | `GATE_VERIFIED` |
+| V1-003 | End-to-End Vertical Slice Execution     | Real human approval via token-hmac-v1, device execution, artifact creation, and pulse durability. | Verification Runner        | `scripts/v1_run_vertical_slice.py`  | Release | `GATE_VERIFIED` |
+| V1-004 | Consolidated Security Battery           | All 12 mandatory security proofs pass consecutively without bypass.            | Security Test Suite        | `scripts/v1_run_security_regression.py` | Release | `GATE_VERIFIED` |
+| V1-005 | Governance & Documentation Hygiene      | All 39 ADRs valid, all 38 pulse types registered, payload schemas complete.    | Governance Auditor         | `scripts/v1_audit_governance.py`    | Release | `GATE_VERIFIED` |
+| V1-006 | Deterministic Replay Equivalence        | Exact artifact SHA-256 byte identity and structural causal replay equivalence. | Replay Verifier            | `scripts/v1_verify_replay.py`       | Release | `GATE_VERIFIED` |
+
+---
+
+# 30C. v1.0.1 Desktop Command Center Exposure Contracts
+
+| ID          | Contract                              | Required Invariant                                                            | Implementation Boundary    | Harness / Evidence                  | Roadmap | Status          |
+| ----------- | ------------------------------------- | ----------------------------------------------------------------------------- | -------------------------- | ----------------------------------- | ------- | --------------- |
+| DESKTOP-001 | Space Lifecycle & Switching Protocol  | Strict space isolation; creation and switching mediated by Channel Daemon.   | Daemon + Desktop UI        | `channels/tests/test_daemon.py`     | v1.0.1  | `SPECIFIED`     |
+| DESKTOP-002 | Conversation History Rehydration     | Dialogue turns deterministically rehydrated from space pulses on load.        | Daemon + Desktop UI        | `channels/tests/test_daemon.py`     | v1.0.1  | `SPECIFIED`     |
+| DESKTOP-003 | Zero-Privilege HTML Preview Sandbox   | `sandbox="allow-scripts"` strictly without `allow-same-origin` or Tauri IPC. | Desktop UI (`MarkdownMessage`)| `channels/tests/test_daemon.py` | v1.0.1  | `SPECIFIED`     |
+| DESKTOP-004 | Space-Scoped Artifact Lifecycle       | SHA-256 digested artifacts queryable, viewable, and downloadable per space.   | Daemon + Desktop UI        | `channels/tests/test_daemon.py`     | v1.0.1  | `SPECIFIED`     |
+| DESKTOP-005 | Sandboxed File Ingress with Taint     | Filename sanitization, <=2MB bound, path traversal guard, and taint tagging.  | Daemon + Desktop UI        | `channels/tests/test_daemon.py`     | v1.0.1  | `SPECIFIED`     |
 
 ---
 
@@ -588,8 +600,8 @@ The matrix is a verification map, not a second architecture.
 
 ---
 
-**Document status:** `FOUNDATION — CLEAN REBUILD`
+**Document status:** `ACTIVE — v1.0.0 RELEASE BASELINE`
 
-**Next artifact:** `contracts/registry/pulse-types.json`
+**Master Verification:** `GATE: PASS (V1-001 through V1-006)`
 
-**Next implementation gate:** Phase 0 — Repository Scaffold
+**Release History:** `docs/RELEASES.md`

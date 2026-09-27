@@ -4,6 +4,10 @@ export interface SpaceInfo {
   space_id: string;
   name: string;
   status: string;
+  owner_id?: string;
+  created_at?: number;
+  budget?: number;
+  attention_limit?: number;
 }
 
 export interface AttentionState {
@@ -53,3 +57,61 @@ export interface TaskItem {
   status: string;
 }
 
+export interface DialogueTurn {
+  turn_id: string;
+  space_id: string;
+  user_prompt: string;
+  assistant_response: string;
+  timestamp: number;
+  goal_id?: string | null;
+  status: string;
+  single_agent_eligible?: boolean;
+  required_capabilities?: string[];
+  artifacts?: string[];
+}
+
+export interface ArtifactItem {
+  artifact_id: string;
+  space_id: string;
+  name: string;
+  mime_type: string;
+  size_bytes: number;
+  sha256: string;
+  created_at: number;
+  metadata?: Record<string, any>;
+}
+
+export interface NodeDevice {
+  device_id: string;
+  device_type: string;
+  state: string;
+}
+
+export interface NodeInfoItem {
+  node_id: string;
+  platform: string;
+  runtime_state: string;
+  trust_tier: string;
+  device_count: number;
+  devices: NodeDevice[];
+}
+
+export interface MemoryExperience {
+  experience_id: string;
+  outcome: string;
+  counterfactual: string;
+  situation?: Record<string, any>;
+}
+
+export interface GlobalKnowledgeItem {
+  knowledge_id: string;
+  topic: string;
+  content: string;
+}
+
+export interface MemoryStateItem {
+  space_id: string;
+  experiences: MemoryExperience[];
+  experience_count: number;
+  global_knowledge: GlobalKnowledgeItem[];
+}

@@ -1,6 +1,16 @@
 /* Local Channel Daemon Client with WebCrypto token-hmac-v1 client-side signing */
 
-import { ApprovalRequestData, AttentionState, PulseEvent, SpaceInfo, TaskItem } from "../types";
+import {
+  ApprovalRequestData,
+  AttentionState,
+  ArtifactItem,
+  DialogueTurn,
+  MemoryStateItem,
+  NodeInfoItem,
+  PulseEvent,
+  SpaceInfo,
+  TaskItem,
+} from "../types";
 
 export const DAEMON_BASE_URL = "http://127.0.0.1:8420";
 
@@ -58,6 +68,76 @@ export class ApiClient {
   async listSpaces(): Promise<SpaceInfo[]> {
     const data = await this.request<{ spaces: SpaceInfo[] }>("GET", "/api/v1/spaces");
     return data.spaces;
+  }
+
+  async getSpace(spaceId: string): Promise<SpaceInfo> {
+    return this.request<SpaceInfo>("GET", `/api/v1/spaces/${spaceId}`);
+  }
+
+  async createSpace(
+    spaceId: string,
+    name: string,
+    options?: { owner_id?: string; budget?: number; attention_limit?: number }
+  ): Promise<{ success: boolean; space: SpaceInfo }> {
+    return this.request("POST", "/api/v1/spaces", {
+      space_id: spaceId,
+      name,
+      owner_id: options?.owner_id || "human_operator",
+      budget: options?.budget ?? 0.0,
+      attention_limit: options?.attention_limit ?? 3,
+    });
+  }
+
+  async getHistory(spaceId: string, limit: number = 100): Promise<DialogueTurn[]> {
+    const data = await this.request<{ space_id: string; turns: DialogueTurn[] }>(
+      "GET",
+      `/api/v1/spaces/${spaceId}/history?limit=${limit}`
+    );
+    return data.turns || [];
+  }
+
+  async listArtifacts(spaceId: string): Promise<ArtifactItem[]> {
+    const data = await this.request<{ space_id: string; artifacts: ArtifactItem[] }>(
+      "GET",
+      `/api/v1/spaces/${spaceId}/artifacts`
+    );
+    return data.artifacts || [];
+  }
+
+  async getArtifactContent(
+    spaceId: string,
+    artifactId: string
+  ): Promise<{ space_id: string; artifact_id: string; content: string; mime_type: string }> {
+    return this.request("GET", `/api/v1/spaces/${spaceId}/artifacts/${artifactId}/content`);
+  }
+
+  async uploadFile(
+    spaceId: string,
+    filename: string,
+    content: string,
+    mimeType: string = "text/plain"
+  ): Promise<{
+    success: boolean;
+    filename: string;
+    bytes_written: number;
+    sha256: string;
+    artifact_id: string;
+    space_id: string;
+  }> {
+    return this.request("POST", `/api/v1/spaces/${spaceId}/files`, {
+      filename,
+      content,
+      mime_type: mimeType,
+    });
+  }
+
+  async listNodes(): Promise<NodeInfoItem[]> {
+    const data = await this.request<{ nodes: NodeInfoItem[] }>("GET", "/api/v1/nodes");
+    return data.nodes || [];
+  }
+
+  async getMemory(spaceId: string): Promise<MemoryStateItem> {
+    return this.request<MemoryStateItem>("GET", `/api/v1/spaces/${spaceId}/memory`);
   }
 
   async getAttention(spaceId: string): Promise<AttentionState> {
@@ -223,4 +303,3 @@ export class ApiClient {
 }
 
 export const api = new ApiClient();
-

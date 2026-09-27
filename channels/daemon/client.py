@@ -86,6 +86,10 @@ class DaemonClient:
         """Check daemon health."""
         return self._request("GET", "/api/v1/health")  # type: ignore
 
+    def check_health(self) -> dict[str, Any]:
+        """Check daemon health (alias)."""
+        return self.health()
+
     def list_spaces(self) -> list[dict[str, Any]]:
         """List active spaces."""
         res = self._request("GET", "/api/v1/spaces")
@@ -221,4 +225,75 @@ class DaemonClient:
         if constraints:
             payload["constraints"] = constraints
         return self._request("POST", f"/api/v1/spaces/{space_id}/prompt", json_data=payload)  # type: ignore
+
+    def create_space(
+        self,
+        space_id: str,
+        name: str = "",
+        owner_id: str = "human_operator",
+        budget: float = 0.0,
+        attention_limit: int = 3,
+    ) -> dict[str, Any]:
+        """Create a new Space via the daemon."""
+        payload = {
+            "space_id": space_id,
+            "name": name,
+            "owner_id": owner_id,
+            "budget": budget,
+            "attention_limit": attention_limit,
+        }
+        return self._request("POST", "/api/v1/spaces", json_data=payload)  # type: ignore
+
+    def get_space(self, space_id: str) -> dict[str, Any] | None:
+        """Inspect specific space."""
+        try:
+            return self._request("GET", f"/api/v1/spaces/{space_id}")  # type: ignore
+        except DaemonClientError as e:
+            if e.status_code == 404:
+                return None
+            raise
+
+    def get_history(self, space_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        """Retrieve conversation history turns for a space."""
+        params = {"limit": limit}
+        res = self._request("GET", f"/api/v1/spaces/{space_id}/history", params=params)
+        return res.get("turns", []) if isinstance(res, dict) else []
+
+    def list_artifacts(self, space_id: str) -> list[dict[str, Any]]:
+        """List registered artifacts for a space."""
+        res = self._request("GET", f"/api/v1/spaces/{space_id}/artifacts")
+        return res.get("artifacts", []) if isinstance(res, dict) else []
+
+    def get_artifact_content(self, space_id: str, artifact_id: str) -> dict[str, Any] | None:
+        """Retrieve content for a specific artifact."""
+        try:
+            return self._request("GET", f"/api/v1/spaces/{space_id}/artifacts/{artifact_id}/content")  # type: ignore
+        except DaemonClientError as e:
+            if e.status_code == 404:
+                return None
+            raise
+
+    def upload_file(
+        self,
+        space_id: str,
+        filename: str,
+        content: str,
+        mime_type: str = "text/plain",
+    ) -> dict[str, Any]:
+        """Upload a text/source file into space sandboxed ingress."""
+        payload = {
+            "filename": filename,
+            "content": content,
+            "mime_type": mime_type,
+        }
+        return self._request("POST", f"/api/v1/spaces/{space_id}/files", json_data=payload)  # type: ignore
+
+    def list_nodes(self) -> list[dict[str, Any]]:
+        """List connected nodes and devices."""
+        res = self._request("GET", "/api/v1/nodes")
+        return res.get("nodes", []) if isinstance(res, dict) else []
+
+    def get_memory(self, space_id: str) -> dict[str, Any]:
+        """Retrieve space memory state and experiences."""
+        return self._request("GET", f"/api/v1/spaces/{space_id}/memory")  # type: ignore
 

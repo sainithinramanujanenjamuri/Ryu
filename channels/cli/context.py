@@ -80,6 +80,28 @@ def create_default_context() -> CLIContext:
         secret_store={},
     )
     client = ApprovalClient(manager=manager, authenticator=auth)
-    return CLIContext(approval_client=client)
+
+    bus: Any = None
+    pulse_store: Any = None
+    try:
+        from ryu.pulse_bus.store import PostgresPulseStore
+        from ryu.pulse_bus.transport import RedisStreamTransport, NoopTransport
+        from ryu.pulse_bus.durable_bus import DurablePulseBus
+        pg_store = PostgresPulseStore(pg_cfg)
+        conn = pg_store._get_conn()
+        conn.close()
+        pulse_store = pg_store
+        try:
+            transport = RedisStreamTransport(DurableBusConfig.from_env().redis)
+        except Exception:
+            transport = NoopTransport()
+        bus = DurablePulseBus(store=pulse_store, transport=transport)
+    except Exception:
+        from ryu.pulse_bus.bus import PulseBus
+        from ryu.pulse_bus.store import InMemoryPulseStore
+        bus = PulseBus()
+        pulse_store = InMemoryPulseStore()
+
+    return CLIContext(approval_client=client, bus=bus, pulse_store=pulse_store)
 
 

@@ -4,8 +4,10 @@ import {
   CheckSquare,
   Compass,
   FileText,
+  FolderOpen,
   HelpCircle,
   Radio,
+  Server,
   Trash2,
 } from "lucide-react";
 
@@ -34,6 +36,18 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     label: "Spaces",
     description: "List isolated spaces or inspect current space",
     icon: <Compass size={15} color="var(--ryu-blue-500)" />,
+  },
+  {
+    command: "/artifacts",
+    label: "Artifacts",
+    description: "Inspect, preview, and download space artifacts (HTML, files)",
+    icon: <FolderOpen size={15} color="var(--ryu-gold-400)" />,
+  },
+  {
+    command: "/system",
+    label: "System",
+    description: "Inspect remote execution nodes and space memory/reflections",
+    icon: <Server size={15} color="var(--ryu-emerald-400)" />,
   },
   {
     command: "/tasks",
@@ -206,4 +220,3 @@ export const SlashCommandMenu: React.FC<SlashCommandMenuProps> = ({
     </div>
   );
 };
-

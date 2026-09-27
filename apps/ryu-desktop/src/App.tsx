@@ -9,6 +9,7 @@ import {
   Key,
   PanelRightClose,
   PanelRightOpen,
+  Paperclip,
   Plus,
   RefreshCw,
   Shield,
@@ -19,12 +20,15 @@ import {
 } from "lucide-react";
 import { api } from "./api/client";
 import { ApprovalCard } from "./components/ApprovalCard";
+import { ArtifactExplorer } from "./components/ArtifactExplorer";
 import { AttentionGauge } from "./components/AttentionGauge";
 import { AuditView } from "./components/AuditView";
 import { CommandPalette } from "./components/CommandPalette";
+import { CreateSpaceModal } from "./components/CreateSpaceModal";
 import { MarkdownMessage } from "./components/MarkdownMessage";
 import { PulseTimeline } from "./components/PulseTimeline";
 import { SlashCommand, SlashCommandMenu } from "./components/SlashCommandMenu";
+import { SystemVisibilityView } from "./components/SystemVisibilityView";
 import { TaskListView } from "./components/TaskListView";
 import {
   ApprovalRequestData,
@@ -71,12 +75,15 @@ export const App: React.FC = () => {
   // Layout Controls
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(true);
-  const [drawerTab, setDrawerTab] = useState<"attention" | "stream" | "tasks" | "audit">("attention");
+  const [drawerTab, setDrawerTab] = useState<"attention" | "stream" | "tasks" | "audit" | "artifacts" | "system">("attention");
 
   // Modals & Settings
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const [isCreateSpaceOpen, setIsCreateSpaceOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [tokenInput, setTokenInput] = useState(api.getDaemonToken());
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Live LLM Generation State
   const [liveLLMEnabled, setLiveLLMEnabled] = useState<boolean>(() => {
@@ -158,6 +165,107 @@ export const App: React.FC = () => {
       setLatencyMs(null);
     }
   };
+
+  const loadHistory = async (spaceId: string) => {
+    try {
+      const turns = await api.getHistory(spaceId);
+      if (turns && turns.length > 0) {
+        const rehydrated: ChatMessage[] = [];
+        for (const turn of turns) {
+          rehydrated.push({
+            id: `turn-u-${turn.turn_id}`,
+            role: "user",
+            content: turn.user_prompt,
+            timestamp: (turn.timestamp || 0) * 1000,
+          });
+          rehydrated.push({
+            id: `turn-a-${turn.turn_id}`,
+            role: "assistant",
+            content: turn.assistant_response,
+            timestamp: ((turn.timestamp || 0) + 0.001) * 1000,
+            goalId: turn.goal_id || undefined,
+            singleAgentEligible: turn.single_agent_eligible,
+            requiredCapabilities: turn.required_capabilities,
+            status: "completed",
+          });
+        }
+        setMessages(rehydrated);
+      } else {
+        setMessages([]);
+      }
+    } catch (e) {
+      console.error("Failed to rehydrate dialogue history:", e);
+    }
+  };
+
+  const handleSpaceCreated = (newSpace: SpaceInfo) => {
+    setSpaces((prev) => {
+      const existing = prev.filter((s) => s.space_id !== newSpace.space_id);
+      return [...existing, newSpace];
+    });
+    setCurrentSpaceId(newSpace.space_id);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    const MAX_SIZE = 2 * 1024 * 1024; // 2MB v1.0.1 policy
+    if (file.size > MAX_SIZE) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `file-err-${Date.now()}`,
+          role: "system",
+          content: `### ❌ File Ingress Rejected\nFile **${file.name}** (${(file.size / (1024 * 1024)).toFixed(2)} MB) exceeds maximum allowed limit of 2 MB under v1.0.1 sandbox policy.`,
+          timestamp: Date.now(),
+        },
+      ]);
+      return;
+    }
+
+    setUploadingFile(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const content = reader.result as string;
+        const res = await api.uploadFile(currentSpaceId, file.name, content, file.type || "text/plain");
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `file-ok-${Date.now()}`,
+            role: "system",
+            content: `### ⚠️ Sandboxed File Ingress (Taint Detected)\n- **File**: \`${res.filename}\` (${(res.bytes_written / 1024).toFixed(1)} KB)\n- **Artifact ID**: \`${res.artifact_id}\`\n- **Space**: \`${res.space_id}\`\n- **SHA-256**: \`${res.sha256}\`\n\n*Security Notice: External file content is sandboxed and tagged with \`taint: true\` under SCCA Law 2 and §6.*`,
+            timestamp: Date.now(),
+          },
+        ]);
+        refreshState();
+      } catch (err: any) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `file-err-${Date.now()}`,
+            role: "system",
+            content: `### ❌ File Ingress Failed\n${err.message || err}`,
+            timestamp: Date.now(),
+          },
+        ]);
+      } finally {
+        setUploadingFile(false);
+      }
+    };
+    reader.onerror = () => {
+      setUploadingFile(false);
+      alert("Failed to read file.");
+    };
+    reader.readAsText(file);
+  };
+
+  useEffect(() => {
+    loadHistory(currentSpaceId);
+  }, [currentSpaceId]);
 
   useEffect(() => {
     refreshState();
@@ -340,6 +448,18 @@ export const App: React.FC = () => {
       return;
     }
 
+    if (root === "/artifacts" || root === "/artifact") {
+      setDrawerOpen(true);
+      setDrawerTab("artifacts");
+      return;
+    }
+
+    if (root === "/system" || root === "/nodes" || root === "/memory") {
+      setDrawerOpen(true);
+      setDrawerTab("system");
+      return;
+    }
+
     if (root === "/help") {
       setMessages((prev) => [
         ...prev,
@@ -491,11 +611,28 @@ export const App: React.FC = () => {
                 letterSpacing: "0.5px",
                 display: "flex",
                 alignItems: "center",
-                gap: "6px",
+                justifyContent: "space-between",
               }}
             >
-              <Compass size={12} />
-              <span>Isolated Spaces</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <Compass size={12} />
+                <span>Isolated Spaces</span>
+              </div>
+              <button
+                onClick={() => setIsCreateSpaceOpen(true)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--ryu-gold-400)",
+                  cursor: "pointer",
+                  padding: "2px",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+                title="Create isolated space"
+              >
+                <Plus size={13} />
+              </button>
             </div>
           )}
 
@@ -631,9 +768,44 @@ export const App: React.FC = () => {
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <span style={{ fontSize: "11px", color: "var(--ryu-text-600)" }}>Space:</span>
-              <span style={{ fontWeight: 600, fontSize: "13px", color: "var(--ryu-text-100)" }}>
-                {currentSpaceId}
-              </span>
+              <select
+                value={currentSpaceId}
+                onChange={(e) => setCurrentSpaceId(e.target.value)}
+                style={{
+                  background: "var(--ryu-canvas)",
+                  color: "var(--ryu-text-100)",
+                  border: "1px solid var(--ryu-border)",
+                  borderRadius: "4px",
+                  padding: "3px 6px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {spaces.map((sp) => (
+                  <option key={sp.space_id} value={sp.space_id}>
+                    {sp.name} ({sp.space_id})
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => setIsCreateSpaceOpen(true)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "3px",
+                  background: "var(--ryu-card)",
+                  border: "1px solid var(--ryu-border)",
+                  borderRadius: "4px",
+                  padding: "3px 7px",
+                  fontSize: "10px",
+                  color: "var(--ryu-gold-400)",
+                  cursor: "pointer",
+                }}
+                title="Create new isolated space (SCCA §4)"
+              >
+                <Plus size={11} /> New
+              </button>
             </div>
 
             <div
@@ -1045,6 +1217,32 @@ export const App: React.FC = () => {
                 /
               </button>
 
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                accept=".txt,.md,.json,.py,.js,.ts,.html,.css,.yaml,.yml,.csv,.rs,.go,.c,.cpp,.java,.sh,.toml,.sql,.xml"
+                style={{ display: "none" }}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingFile}
+                style={{
+                  background: "var(--ryu-card-hover)",
+                  border: "1px solid var(--ryu-border)",
+                  borderRadius: "6px",
+                  color: uploadingFile ? "var(--ryu-gold-500)" : "var(--ryu-text-400)",
+                  padding: "5px 8px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                title="Sandboxed file ingress (text files, max 2MB, SCCA §6)"
+              >
+                <Paperclip size={14} />
+              </button>
+
               <textarea
                 ref={inputRef}
                 rows={1}
@@ -1117,14 +1315,14 @@ export const App: React.FC = () => {
               borderBottom: "1px solid var(--ryu-border)",
             }}
           >
-            <div style={{ display: "flex", gap: "4px" }}>
+            <div style={{ display: "flex", gap: "3px", flexWrap: "wrap" }}>
               <button
                 onClick={() => setDrawerTab("attention")}
                 style={{
                   background: drawerTab === "attention" ? "var(--ryu-card-hover)" : "transparent",
                   color: drawerTab === "attention" ? "var(--ryu-text-100)" : "var(--ryu-text-400)",
                   border: "none",
-                  padding: "4px 8px",
+                  padding: "4px 6px",
                   borderRadius: "4px",
                   fontSize: "11px",
                   fontWeight: 600,
@@ -1134,12 +1332,42 @@ export const App: React.FC = () => {
                 Gates ({activeApprovals.length})
               </button>
               <button
+                onClick={() => setDrawerTab("artifacts")}
+                style={{
+                  background: drawerTab === "artifacts" ? "var(--ryu-card-hover)" : "transparent",
+                  color: drawerTab === "artifacts" ? "var(--ryu-text-100)" : "var(--ryu-text-400)",
+                  border: "none",
+                  padding: "4px 6px",
+                  borderRadius: "4px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Artifacts
+              </button>
+              <button
+                onClick={() => setDrawerTab("system")}
+                style={{
+                  background: drawerTab === "system" ? "var(--ryu-card-hover)" : "transparent",
+                  color: drawerTab === "system" ? "var(--ryu-text-100)" : "var(--ryu-text-400)",
+                  border: "none",
+                  padding: "4px 6px",
+                  borderRadius: "4px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                System
+              </button>
+              <button
                 onClick={() => setDrawerTab("stream")}
                 style={{
                   background: drawerTab === "stream" ? "var(--ryu-card-hover)" : "transparent",
                   color: drawerTab === "stream" ? "var(--ryu-text-100)" : "var(--ryu-text-400)",
                   border: "none",
-                  padding: "4px 8px",
+                  padding: "4px 6px",
                   borderRadius: "4px",
                   fontSize: "11px",
                   fontWeight: 600,
@@ -1154,7 +1382,7 @@ export const App: React.FC = () => {
                   background: drawerTab === "tasks" ? "var(--ryu-card-hover)" : "transparent",
                   color: drawerTab === "tasks" ? "var(--ryu-text-100)" : "var(--ryu-text-400)",
                   border: "none",
-                  padding: "4px 8px",
+                  padding: "4px 6px",
                   borderRadius: "4px",
                   fontSize: "11px",
                   fontWeight: 600,
@@ -1169,7 +1397,7 @@ export const App: React.FC = () => {
                   background: drawerTab === "audit" ? "var(--ryu-card-hover)" : "transparent",
                   color: drawerTab === "audit" ? "var(--ryu-text-100)" : "var(--ryu-text-400)",
                   border: "none",
-                  padding: "4px 8px",
+                  padding: "4px 6px",
                   borderRadius: "4px",
                   fontSize: "11px",
                   fontWeight: 600,
@@ -1280,6 +1508,14 @@ export const App: React.FC = () => {
             {drawerTab === "audit" && (
               <AuditView events={auditEvents} onRefresh={refreshState} />
             )}
+
+            {drawerTab === "artifacts" && (
+              <ArtifactExplorer spaceId={currentSpaceId} />
+            )}
+
+            {drawerTab === "system" && (
+              <SystemVisibilityView spaceId={currentSpaceId} />
+            )}
           </div>
         </aside>
       )}
@@ -1290,9 +1526,17 @@ export const App: React.FC = () => {
         onClose={() => setIsPaletteOpen(false)}
         onExecute={(action) => {
           if (action === "refresh") refreshState();
-          else if (action === "audit") {
+          else if (action === "create_space") {
+            setIsCreateSpaceOpen(true);
+          } else if (action === "artifacts") {
             setDrawerOpen(true);
-            setDrawerTab("attention");
+            setDrawerTab("artifacts");
+          } else if (action === "system") {
+            setDrawerOpen(true);
+            setDrawerTab("system");
+          } else if (action === "audit") {
+            setDrawerOpen(true);
+            setDrawerTab("audit");
           } else if (action === "tasks") {
             setDrawerOpen(true);
             setDrawerTab("tasks");
@@ -1301,6 +1545,13 @@ export const App: React.FC = () => {
             setDrawerTab("stream");
           }
         }}
+      />
+
+      {/* ─── Create Space Modal (SCCA §4) ─────────────────────────────── */}
+      <CreateSpaceModal
+        isOpen={isCreateSpaceOpen}
+        onClose={() => setIsCreateSpaceOpen(false)}
+        onCreated={handleSpaceCreated}
       />
 
       {/* ─── 5. DAEMON TOKEN MODAL ───────────────────────────────────── */}
