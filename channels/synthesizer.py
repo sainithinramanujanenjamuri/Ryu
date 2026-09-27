@@ -58,11 +58,22 @@ def set_llm_config(
     return get_llm_config()
 
 
+def clean_artifact_content(content: str, mime_type: str = "text/plain") -> str:
+    """Strip redundant style/script tags and excessive whitespace from HTML/text artifacts."""
+    if "html" in mime_type.lower() or content.lstrip().startswith("<!doctype") or "<html" in content.lower():
+        clean = re.sub(r"<style[^>]*>.*?</style>", "", content, flags=re.DOTALL | re.IGNORECASE)
+        clean = re.sub(r"<script[^>]*>.*?</script>", "", clean, flags=re.DOTALL | re.IGNORECASE)
+        clean = re.sub(r"\n\s*\n", "\n\n", clean)
+        return clean.strip()
+    return content.strip()
+
+
 def synthesize_response(
     prompt: str,
     space_id: str,
     goal_spec: Any | None = None,
     live_llm: bool | None = None,
+    artifacts: list[dict[str, Any]] | None = None,
 ) -> str:
     """Generate a response fulfilling the prompt (via Live LLM or Deterministic)."""
     clean_prompt = prompt.strip()
@@ -87,6 +98,39 @@ def synthesize_response(
             timeout=120.0,
             provider_name=provider_name,
         )
+
+        system_content = (
+            f"You are RYU AI, an advanced cognitive architecture and autonomous agent operating inside Space '{space_id}' "
+            f"under the Space-Centric Cognitive Architecture (SCCA).\n"
+            f"Guidelines:\n"
+            f"1. Interpret user intent flexibly, resolving typos or shorthand naturally (e.g., 'sit', 'wed sit', 'websit' mean 'website / webpage').\n"
+            f"2. When the user asks to build, create, or design a website, webpage, landing page, app, or tool, ALWAYS generate the complete, self-contained, high-quality, and modern HTML/CSS/JavaScript code in a clean markdown code block.\n"
+            f"3. Never refuse with disclaimers like 'I cannot build websites' or 'I am just a text assistant' — you are an engineer and software generator, so write and deliver the code directly.\n"
+            f"4. Format all responses cleanly in Markdown with insightful explanations."
+        )
+
+        if artifacts:
+            docs_summary = []
+            for art in artifacts:
+                art_name = art.get("name", "document")
+                art_mime = art.get("mime_type", "text/plain")
+                art_text = clean_artifact_content(art.get("content", ""), art_mime)
+                if len(art_text) > 30000:
+                    art_text = art_text[:30000] + "\n... [Content truncated for context window] ..."
+                docs_summary.append(
+                    f"\n--- Start of Uploaded Document: '{art_name}' (ID: {art.get('artifact_id')}) ---\n"
+                    f"{art_text}\n"
+                    f"--- End of Document: '{art_name}' ---"
+                )
+            docs_block = "\n".join(docs_summary)
+            system_content += (
+                f"\n\nSpace-Local Knowledge & Uploaded Artifacts:\n"
+                f"The following documents/notes belong to Space '{space_id}' (SCCA Law 1 & Law 4).\n"
+                f"When the user asks to explain, summarize, or analyze 'this pdf', 'the document', 'the file', "
+                f"'the notes', or references any uploaded content, treat these artifacts as the user's uploaded context:\n"
+                f"{docs_block}"
+            )
+
         req = LLMRequest(
             request_id=f"llm-{uuid.uuid4().hex[:12]}",
             correlation_id=goal_id,
@@ -97,15 +141,7 @@ def synthesize_response(
             messages=[
                 {
                     "role": "system",
-                    "content": (
-                        f"You are RYU AI, an advanced cognitive architecture and autonomous agent operating inside Space '{space_id}' "
-                        f"under the Space-Centric Cognitive Architecture (SCCA).\n"
-                        f"Guidelines:\n"
-                        f"1. Interpret user intent flexibly, resolving typos or shorthand naturally (e.g., 'sit', 'wed sit', 'websit' mean 'website / webpage').\n"
-                        f"2. When the user asks to build, create, or design a website, webpage, landing page, app, or tool, ALWAYS generate the complete, self-contained, high-quality, and modern HTML/CSS/JavaScript code in a clean markdown code block.\n"
-                        f"3. Never refuse with disclaimers like 'I cannot build websites' or 'I am just a text assistant' — you are an engineer and software generator, so write and deliver the code directly.\n"
-                        f"4. Format all responses cleanly in Markdown with insightful explanations."
-                    ),
+                    "content": system_content,
                 },
                 {"role": "user", "content": clean_prompt},
             ],
@@ -119,7 +155,7 @@ def synthesize_response(
             )
         else:
             err_msg = resp.error.message if resp.error else "Model returned empty response"
-            det_res = _synthesize_deterministic(clean_prompt, space_id, goal_id, single_agent, caps_str)
+            det_res = _synthesize_deterministic(clean_prompt, space_id, goal_id, single_agent, caps_str, artifacts=artifacts)
             return (
                 f"> [!WARNING]\n"
                 f"> **Live LLM Offline**: Failed to reach `{_LLM_CONFIG['base_url']}` ({err_msg}).\n"
@@ -127,7 +163,7 @@ def synthesize_response(
                 f"{det_res}"
             )
 
-    return _synthesize_deterministic(clean_prompt, space_id, goal_id, single_agent, caps_str)
+    return _synthesize_deterministic(clean_prompt, space_id, goal_id, single_agent, caps_str, artifacts=artifacts)
 
 
 def _synthesize_deterministic(
@@ -136,9 +172,36 @@ def _synthesize_deterministic(
     goal_id: str,
     single_agent: bool,
     caps_str: str,
+    artifacts: list[dict[str, Any]] | None = None,
 ) -> str:
     """Generate a clean, structured deterministic response fulfilling the prompt."""
     lower = clean_prompt.lower()
+
+    # ─── 0. ARTIFACT & DOCUMENT EXPLANATION ───────────────────────────
+    if artifacts and any(kw in lower for kw in ("explain", "summarize", "analyze", "read", "overview", "what is in", "review", "tell me about")) and any(kw in lower for kw in ("pdf", "file", "document", "notes", "artifact", "html")):
+        latest_art = artifacts[0]
+        art_name = latest_art.get("name", "document")
+        content = clean_artifact_content(latest_art.get("content", ""), latest_art.get("mime_type", ""))
+        headings = re.findall(r"<h[1-4][^>]*>(.*?)</h[1-4]>", content, flags=re.IGNORECASE)
+        if not headings:
+            headings = re.findall(r"^#{1,4}\s+(.+)$", content, flags=re.MULTILINE)
+
+        preview = re.sub(r"<[^>]+>", " ", content)
+        preview_words = preview.split()[:140]
+        preview_snippet = " ".join(preview_words)
+
+        heading_list = "\n".join(f"- **{re.sub(r'<[^>]+>', '', h).strip()}**" for h in headings[:12]) if headings else "- *(General document sections)*"
+
+        return (
+            f"### Document Analysis: `{art_name}`\n\n"
+            f"**Space Context**: Bounded to Space `{space_id}` (SCCA Law 1 & Law 4).\n\n"
+            f"#### Key Outline & Topics Covered:\n"
+            f"{heading_list}\n\n"
+            f"#### Content Overview:\n"
+            f"> {preview_snippet}...\n\n"
+            f"---\n"
+            f"*Tip: Toggle live LLM to ON (`qwen3.5:4b`) for full natural-language question answering across this document.*"
+        )
 
     # ─── 1. GREETINGS & CASUAL INTERACTION ────────────────────────────
     if lower in ("hi", "hello", "hey", "greetings", "hi ryu", "hello ryu", "hey ryu"):

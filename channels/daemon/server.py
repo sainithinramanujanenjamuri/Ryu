@@ -497,7 +497,31 @@ class DaemonRequestHandler(BaseHTTPRequestHandler):
         """Synthesize a structured markdown response fulfilling the prompt under SCCA §18."""
         from channels.synthesizer import synthesize_response
 
-        return synthesize_response(prompt, space_id, goal_spec, live_llm=live_llm)
+        # Retrieve space artifacts to provide Space-scoped cognitive context (SCCA Law 1 & Law 4)
+        artifacts_context = []
+        if hasattr(self.server, "artifact_store") and self.server.artifact_store:
+            try:
+                arts = self.server.artifact_store.list_artifacts(space_id)
+                for a in arts[:5]:  # Up to 5 most recent artifacts
+                    content_pair = self.server.artifact_store.get_artifact_content(space_id, a["artifact_id"])
+                    if content_pair:
+                        content, mime = content_pair
+                        artifacts_context.append({
+                            "artifact_id": a["artifact_id"],
+                            "name": a.get("name", "document"),
+                            "mime_type": mime,
+                            "content": content,
+                        })
+            except Exception as e:
+                logger.warning(f"Could not load artifacts context for space '{space_id}': {e}")
+
+        return synthesize_response(
+            prompt,
+            space_id,
+            goal_spec,
+            live_llm=live_llm,
+            artifacts=artifacts_context,
+        )
 
     def _handle_sse_stream(self, space_id: str) -> None:
         """Stream real-time pulses for space via Server-Sent Events."""

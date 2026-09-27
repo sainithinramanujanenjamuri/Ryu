@@ -384,3 +384,27 @@ def test_space_memory_visibility(setup_daemon_v101):
     assert mem["experience_count"] == 1
     assert mem["experiences"][0]["experience_id"] == "exp-101"
     assert mem["experiences"][0]["outcome"] == "success"
+
+
+def test_prompt_explains_uploaded_artifact(setup_daemon_v101):
+    """Prompts requesting explanations of uploaded artifacts synthesize document outline."""
+    client: DaemonClient = setup_daemon_v101["client"]
+    space_id = "space-doc-explain"
+
+    # Upload an HTML document to the space
+    upload_res = client.upload_file(
+        space_id=space_id,
+        filename="lecture_notes.html",
+        content="<h1>Machine Learning Foundations</h1><p>Supervised vs Unsupervised learning.</p><h2>Loss Functions</h2><p>Mean squared error and cross entropy.</p>",
+        mime_type="text/html",
+    )
+    assert upload_res["success"] is True
+
+    # Ask to explain the document / pdf
+    prompt_res = client.send_prompt(space_id=space_id, prompt="explain this pdf notes")
+    assert prompt_res["status"] == "completed"
+    resp_text = prompt_res["response"]
+
+    assert "Machine Learning Foundations" in resp_text or "lecture_notes.html" in resp_text
+    assert "Loss Functions" in resp_text or "Outline" in resp_text
+
