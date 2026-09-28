@@ -1538,7 +1538,7 @@ spec_map:
 
   # -----------------------------------------------------------------------
   # -----------------------------------------------------------------------
-  # Phase 12.1–12.3 — Dispatcher Contracts, CAS Integration & Lease Pipeline
+  # Phase 12.1–12.4 — Dispatcher Contracts, CAS Integration, Lease Pipeline & Worker Invocation
   # -----------------------------------------------------------------------
 
   - id: DISPATCH-001
@@ -1550,9 +1550,9 @@ spec_map:
     contract:
       file: "core/plans/task_graph.py"
       rule: "topological sort using Kahn's algorithm and dependency validation"
-    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py, core/space/tests/test_phase12_kernel_cas.py, core/orchestrator/tests/test_phase12_admission_lease.py"
+    harness_case: "core/orchestrator/tests/test_phase12_dispatcher_protocol.py"
     roadmap_phase: 12
-    evidence_state: "UNIT_VERIFIED"
+    evidence_state: "INTEGRATION_VERIFIED"
 
   - id: DISPATCH-002
     title: "Deterministic Task Lifecycle State Machine"
@@ -1563,9 +1563,9 @@ spec_map:
     contract:
       file: "core/plans/task_graph.py"
       rule: "state machine transition matrix with 11 primary states"
-    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py, core/space/tests/test_phase12_kernel_cas.py, core/orchestrator/tests/test_phase12_admission_lease.py"
+    harness_case: "workers/tests/test_phase12_worker_invocation.py"
     roadmap_phase: 12
-    evidence_state: "UNIT_VERIFIED"
+    evidence_state: "INTEGRATION_VERIFIED"
 
   - id: DISPATCH-003
     title: "Exactly-Once Dispatch Semantics & Idempotency"
@@ -1576,9 +1576,9 @@ spec_map:
     contract:
       file: "core/orchestrator/dispatch_model.py"
       rule: "compute_dispatch_idempotency_key and Dispatcher attempt tracking"
-    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py, core/orchestrator/tests/test_phase12_admission_lease.py"
+    harness_case: "workers/tests/test_phase12_worker_invocation.py"
     roadmap_phase: 12
-    evidence_state: "UNIT_VERIFIED"
+    evidence_state: "INTEGRATION_VERIFIED"
 
   - id: DISPATCH-004
     title: "Execution Evidence Verification"
@@ -1589,9 +1589,9 @@ spec_map:
     contract:
       file: "core/orchestrator/dispatch_model.py"
       rule: "VerifiedExecutionEvidence validation"
-    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py"
+    harness_case: "workers/tests/test_phase12_worker_invocation.py"
     roadmap_phase: 12
-    evidence_state: "UNIT_VERIFIED"
+    evidence_state: "INTEGRATION_VERIFIED"
 
   - id: DISPATCH-005
     title: "Strict Core Independence & Protocol Isolation"
@@ -1602,8 +1602,8 @@ spec_map:
     contract:
       file: "core/orchestrator/dispatch_model.py"
       rule: "abstract protocols for execution, zero concrete worker imports"
-    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py, core/space/tests/test_phase12_kernel_cas.py, core/orchestrator/tests/test_phase12_admission_lease.py"
+    harness_case: "core/orchestrator/tests/test_phase12_dispatcher_protocol.py"
     roadmap_phase: 12
-    evidence_state: "UNIT_VERIFIED"
+    evidence_state: "INTEGRATION_VERIFIED"
 
 

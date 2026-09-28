@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Protocol
 
+from ryu.pulse_bus.pulse import Pulse, Severity
+
 from core.capabilities.admission import CapabilityRequest, CapabilityResponse
 from core.plans.delta import PlanDelta
 from core.plans.task_graph import (
@@ -104,10 +106,53 @@ class VerifiedExecutionEvidence:
     details: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class TaskExecutionRequest:
+    """Request contract submitted by Dispatcher to WorkerInvokerProtocol (Phase 12.4)."""
+
+    request_id: str
+    space_id: str
+    task_id: str
+    plan_id: str
+    plan_version: int
+    attempt: int
+    capability: str
+    lease_token: str = ""
+    arguments: dict[str, Any] = field(default_factory=dict)
+    worker_id: str = ""
+    idempotency_key: str = ""
+    is_tainted: bool = False
+    timeout_seconds: float = 30.0
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+@dataclass(frozen=True)
+class TaskExecutionResult:
+    """Result contract returned by WorkerInvokerProtocol to Dispatcher (Phase 12.4)."""
+
+    request_id: str
+    status: str  # "ok" | "failed" | "timeout" | "violation" | "cancelled" | "denied"
+    task_id: str
+    space_id: str
+    plan_version: int
+    output_data: Any = None
+    artifacts: list[Any] = field(default_factory=list)
+    taint: bool = False
+    duration_seconds: float = 0.0
+    error: str | None = None
+    error_class: str | None = None
+    logs: list[str] = field(default_factory=list)
+    details: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def is_success(self) -> bool:
+        return self.status == "ok" and self.error is None
+
+
 class WorkerInvokerProtocol(Protocol):
     """Dependency inversion protocol for invoking capability workers (AGENTS.md §7)."""
 
-    def invoke(self, request: Any) -> Any: ...
+    def invoke(self, request: TaskExecutionRequest) -> TaskExecutionResult: ...
 
 
 class GoalEvaluatorProtocol(Protocol):
@@ -176,6 +221,26 @@ class TaskPipelineResult:
     queue_position: int | None = None
     error: str | None = None
     reason: str = ""
+
+
+@dataclass(frozen=True)
+class DispatchExecutionResult:
+    """Consolidated outcome of dispatching and executing a task via WorkerInvoker (Phase 12.4)."""
+
+    task_id: str
+    space_id: str
+    plan_version: int
+    status: str  # "ok" | "failed" | "timeout" | "violation" | "cancelled" | "denied" | "cas_failed" | "rejected"
+    terminal_state: str  # "observing" | "failed" | "timed_out" | "cancelled" | "leased" | "blocked"
+    execution_result: TaskExecutionResult | None = None
+    lease_token: str | None = None
+    output_data: Any = None
+    artifacts: list[dict[str, Any]] = field(default_factory=list)
+    taint: bool = False
+    duration_seconds: float = 0.0
+    error: str | None = None
+    reason: str = ""
+    cached: bool = False
 
 
 class DeterministicDispatcher:
@@ -896,4 +961,441 @@ class DeterministicDispatcher:
             capability_response=adm_resp,
             error=acq_res.reason,
             reason=f"Resource acquisition failed: {acq_res.reason}",
+        )
+
+    def dispatch_task(
+        self,
+        kernel: SpaceKernelAuthorityProtocol,
+        resource_mgr: ResourceManager,
+        task_id: str,
+        invoker: WorkerInvokerProtocol,
+        expected_plan_version: int | None = None,
+        is_tainted: bool = False,
+        timeout_seconds: float = 30.0,
+    ) -> DispatchExecutionResult:
+        """Dispatch an admitted and leased task to a capability worker (Phase 12.4).
+
+        SCCA Lifecycle Transitions:
+            LEASED -> DISPATCHED -> RUNNING -> OBSERVING (or FAILED / TIMED_OUT / CANCELLED)
+
+        Mandatory Boundaries:
+            - Task must be in LEASED state.
+            - Lease must be active, valid, and bound to kernel.space_id and task_id.
+            - Plan version must match expected_plan_version.
+            - Idempotency deduplication: duplicate execution requests are contained.
+            - Invoker executes sandboxed worker.
+            - All termination paths release the acquired lease in ResourceManager.
+        """
+        graph = kernel.get_task_graph()
+        node = graph.get_node(task_id)
+        if node is None:
+            raise TaskNotFoundError(
+                f"Task '{task_id}' not found in space '{kernel.space_id}'"
+            )
+
+        cur_version = kernel.get_plan_version()
+        effective_version = expected_plan_version if expected_plan_version is not None else cur_version
+        idempotency_key = compute_dispatch_idempotency_key(
+            space_id=kernel.space_id,
+            plan_version=effective_version,
+            task_id=task_id,
+            attempt=node.attempt,
+        )
+
+        if self.is_attempt_tracked(idempotency_key):
+            # Duplicate execution request is contained idempotently (ADR-0041)
+            return DispatchExecutionResult(
+                task_id=task_id,
+                space_id=kernel.space_id,
+                plan_version=cur_version,
+                status="ok",
+                terminal_state=node.state,
+                cached=True,
+                lease_token=node.result_ref,
+                reason="Duplicate dispatch request idempotently deduplicated",
+            )
+
+        if expected_plan_version is not None and cur_version != expected_plan_version:
+            return DispatchExecutionResult(
+                task_id=task_id,
+                space_id=kernel.space_id,
+                plan_version=cur_version,
+                status="rejected",
+                terminal_state=node.state,
+                error="plan_version_mismatch",
+                reason=f"Expected plan version {expected_plan_version}, current {cur_version}",
+            )
+
+        norm_state = node.state.lower()
+        if norm_state != TaskState.LEASED.value:
+            return DispatchExecutionResult(
+                task_id=task_id,
+                space_id=kernel.space_id,
+                plan_version=cur_version,
+                status="rejected",
+                terminal_state=node.state,
+                error="invalid_task_state_for_dispatch",
+                reason=f"Task '{task_id}' is in state '{node.state}'; expected 'leased'",
+            )
+
+        lease_token = node.result_ref
+        if not lease_token:
+            return DispatchExecutionResult(
+                task_id=task_id,
+                space_id=kernel.space_id,
+                plan_version=cur_version,
+                status="rejected",
+                terminal_state=node.state,
+                error="missing_lease_token",
+                reason="Task is in leased state but has no lease token result_ref",
+            )
+
+        # Validate mandatory lease existence and ownership (Step 4)
+        lease = resource_mgr.get_lease(lease_token)
+        if lease is None:
+            kernel.propose_task_transition(
+                task_id=task_id,
+                to_state=TaskState.FAILED.value,
+                expected_plan_version=cur_version,
+                from_state=TaskState.LEASED.value,
+                reason=f"Execution rejected: lease {lease_token} not found",
+                error="lease_not_found",
+            )
+            return DispatchExecutionResult(
+                task_id=task_id,
+                space_id=kernel.space_id,
+                plan_version=kernel.get_plan_version(),
+                status="rejected",
+                terminal_state=TaskState.FAILED.value,
+                error="lease_not_found",
+                reason=f"Lease {lease_token} not found in ResourceManager",
+            )
+
+        if lease.space_id != kernel.space_id:
+            kernel.propose_task_transition(
+                task_id=task_id,
+                to_state=TaskState.FAILED.value,
+                expected_plan_version=cur_version,
+                from_state=TaskState.LEASED.value,
+                reason=f"Cross-space lease access rejected: lease in {lease.space_id}, task in {kernel.space_id}",
+                error="cross_space_lease",
+            )
+            return DispatchExecutionResult(
+                task_id=task_id,
+                space_id=kernel.space_id,
+                plan_version=kernel.get_plan_version(),
+                status="rejected",
+                terminal_state=TaskState.FAILED.value,
+                error="cross_space_lease",
+                reason=f"Lease belongs to space {lease.space_id}, caller in {kernel.space_id}",
+            )
+
+        if lease.requester_id != task_id:
+            kernel.propose_task_transition(
+                task_id=task_id,
+                to_state=TaskState.FAILED.value,
+                expected_plan_version=cur_version,
+                from_state=TaskState.LEASED.value,
+                reason=f"Wrong task lease: lease held by {lease.requester_id}, task is {task_id}",
+                error="wrong_task_lease",
+            )
+            return DispatchExecutionResult(
+                task_id=task_id,
+                space_id=kernel.space_id,
+                plan_version=kernel.get_plan_version(),
+                status="rejected",
+                terminal_state=TaskState.FAILED.value,
+                error="wrong_task_lease",
+                reason=f"Lease held by {lease.requester_id}, task is {task_id}",
+            )
+
+        now = resource_mgr.clock.now()
+        if not lease.is_valid(now):
+            err_reason = "lease_expired" if now >= lease.expiry else f"lease_{lease.state.value}"
+            kernel.propose_task_transition(
+                task_id=task_id,
+                to_state=TaskState.FAILED.value,
+                expected_plan_version=cur_version,
+                from_state=TaskState.LEASED.value,
+                reason=f"Execution rejected: lease {lease_token} is invalid ({err_reason})",
+                error=err_reason,
+            )
+            return DispatchExecutionResult(
+                task_id=task_id,
+                space_id=kernel.space_id,
+                plan_version=kernel.get_plan_version(),
+                status="rejected",
+                terminal_state=TaskState.FAILED.value,
+                error=err_reason,
+                reason=f"Lease {lease_token} is invalid ({err_reason})",
+            )
+
+
+        self.record_attempt(
+            DispatchAttempt(
+                idempotency_key=idempotency_key,
+                space_id=kernel.space_id,
+                plan_version=cur_version,
+                task_id=task_id,
+                attempt=node.attempt,
+                status="dispatched",
+            )
+        )
+
+        # Transition LEASED -> DISPATCHED via CAS
+        ok, new_ver, err = kernel.propose_task_transition(
+            task_id=task_id,
+            to_state=TaskState.DISPATCHED.value,
+            expected_plan_version=cur_version,
+            from_state=TaskState.LEASED.value,
+            reason="Dispatching task to worker invoker",
+        )
+        if not ok:
+            return DispatchExecutionResult(
+                task_id=task_id,
+                space_id=kernel.space_id,
+                plan_version=new_ver,
+                status="cas_failed",
+                terminal_state=node.state,
+                error=f"cas_failed: {err}",
+            )
+        cur_version = new_ver
+
+        # Transition DISPATCHED -> RUNNING via CAS
+        ok, new_ver, err = kernel.propose_task_transition(
+            task_id=task_id,
+            to_state=TaskState.RUNNING.value,
+            expected_plan_version=cur_version,
+            from_state=TaskState.DISPATCHED.value,
+            reason="Worker execution started",
+        )
+        if not ok:
+            return DispatchExecutionResult(
+                task_id=task_id,
+                space_id=kernel.space_id,
+                plan_version=new_ver,
+                status="cas_failed",
+                terminal_state=node.state,
+                error=f"cas_failed: {err}",
+            )
+        cur_version = new_ver
+
+        # Publish task.started pulse (if bus available)
+        bus = getattr(kernel, "bus", None)
+        if bus is not None:
+            bus.publish(
+                Pulse(
+                    id=f"pulse-start-{kernel.space_id}-{task_id}-{node.attempt}",
+                    space_id=kernel.space_id,
+                    type="task.started",
+                    severity=Severity.INFO,
+                    source="dispatcher",
+                    timestamp=datetime.now(timezone.utc),
+                    payload={
+                        "task_id": task_id,
+                        "plan_version": cur_version,
+                    },
+                    taint=is_tainted,
+                    correlation_id=f"corr-{kernel.space_id}-{task_id}",
+                )
+            )
+
+        req_id = f"req-{task_id}-{node.attempt}-{cur_version}"
+        task_req = TaskExecutionRequest(
+            request_id=req_id,
+            space_id=kernel.space_id,
+            task_id=task_id,
+            plan_id=f"plan-{kernel.space_id}",
+            plan_version=cur_version,
+            attempt=node.attempt,
+            capability=node.capability,
+            lease_token=lease_token,
+            arguments=dict(node.params),
+            idempotency_key=idempotency_key,
+            is_tainted=is_tainted,
+            timeout_seconds=timeout_seconds,
+        )
+
+        try:
+            exec_res = invoker.invoke(task_req)
+        except Exception as exc:
+            exec_res = TaskExecutionResult(
+                request_id=req_id,
+                status="failed",
+                task_id=task_id,
+                space_id=kernel.space_id,
+                plan_version=cur_version,
+                error=str(exc),
+                error_class="terminal.invalid_params",
+            )
+
+        terminal_status = exec_res.status
+        if exec_res.is_success:
+            ok, new_ver, _ = kernel.propose_task_transition(
+                task_id=task_id,
+                to_state=TaskState.OBSERVING.value,
+                expected_plan_version=cur_version,
+                from_state=TaskState.RUNNING.value,
+                reason="Worker execution succeeded; observing artifacts",
+                result_ref=exec_res.request_id,
+            )
+            terminal_state = TaskState.OBSERVING.value
+            cur_version = new_ver
+        elif exec_res.status == "timeout":
+            err_msg = exec_res.error or "Execution timed out"
+            ok, new_ver, _ = kernel.propose_task_transition(
+                task_id=task_id,
+                to_state=TaskState.TIMED_OUT.value,
+                expected_plan_version=cur_version,
+                from_state=TaskState.RUNNING.value,
+                reason=err_msg,
+                error=err_msg,
+            )
+            terminal_state = TaskState.TIMED_OUT.value
+            cur_version = new_ver
+            if bus is not None:
+                bus.publish(
+                    Pulse(
+                        id=f"pulse-fail-{kernel.space_id}-{task_id}-{cur_version}",
+                        space_id=kernel.space_id,
+                        type="task.failed",
+                        severity=Severity.ERROR,
+                        source="dispatcher",
+                        timestamp=datetime.now(timezone.utc),
+                        payload={
+                            "task_id": task_id,
+                            "error_class": exec_res.error_class or "transient.timeout",
+                            "message": err_msg,
+                            "plan_version": cur_version,
+                        },
+                        taint=exec_res.taint,
+                        correlation_id=f"corr-{kernel.space_id}-{task_id}",
+                    )
+                )
+        elif exec_res.status == "cancelled":
+            err_msg = exec_res.error or "Execution cancelled"
+            ok, new_ver, _ = kernel.propose_task_transition(
+                task_id=task_id,
+                to_state=TaskState.CANCELLED.value,
+                expected_plan_version=cur_version,
+                from_state=TaskState.RUNNING.value,
+                reason=err_msg,
+                error=err_msg,
+            )
+            terminal_state = TaskState.CANCELLED.value
+            cur_version = new_ver
+        else:
+            err_msg = exec_res.error or f"Worker execution {exec_res.status}"
+            ok, new_ver, _ = kernel.propose_task_transition(
+                task_id=task_id,
+                to_state=TaskState.FAILED.value,
+                expected_plan_version=cur_version,
+                from_state=TaskState.RUNNING.value,
+                reason=err_msg,
+                error=err_msg,
+            )
+            terminal_state = TaskState.FAILED.value
+            cur_version = new_ver
+            if bus is not None:
+                bus.publish(
+                    Pulse(
+                        id=f"pulse-fail-{kernel.space_id}-{task_id}-{cur_version}",
+                        space_id=kernel.space_id,
+                        type="task.failed",
+                        severity=Severity.ERROR,
+                        source="dispatcher",
+                        timestamp=datetime.now(timezone.utc),
+                        payload={
+                            "task_id": task_id,
+                            "error_class": exec_res.error_class or "terminal.invalid_params",
+                            "message": err_msg,
+                            "plan_version": cur_version,
+                        },
+                        taint=exec_res.taint,
+                        correlation_id=f"corr-{kernel.space_id}-{task_id}",
+                    )
+                )
+
+        try:
+            resource_mgr.release(
+                space_id=kernel.space_id,
+                requester_id=task_id,
+                lease_token=lease_token,
+            )
+        except Exception:
+            pass
+
+        return DispatchExecutionResult(
+            task_id=task_id,
+            space_id=kernel.space_id,
+            plan_version=cur_version,
+            status=terminal_status,
+            terminal_state=terminal_state,
+            execution_result=exec_res,
+            lease_token=lease_token,
+            output_data=exec_res.output_data,
+            artifacts=list(exec_res.artifacts),
+            taint=exec_res.taint,
+            duration_seconds=exec_res.duration_seconds,
+            error=exec_res.error,
+            reason=f"Dispatch completed: status={terminal_status}, terminal_state={terminal_state}",
+        )
+
+    def execute_task_pipeline(
+        self,
+        kernel: SpaceKernelAuthorityProtocol,
+        resource_mgr: ResourceManager,
+        task_id: str,
+        resource_identity: ResourceIdentity,
+        invoker: WorkerInvokerProtocol,
+        expected_plan_version: int | None = None,
+        units: int = 1,
+        duration_seconds: float = 60.0,
+        priority: int = 0,
+        is_tainted: bool = False,
+        approval: Any | None = None,
+        budget: float = 0.0,
+        timeout: float = 30.0,
+        scope: str = "execution",
+    ) -> DispatchExecutionResult:
+        """Execute end-to-end task execution pipeline from READY through OBSERVING (Phase 12.4).
+
+        Pipeline:
+            READY -> ADMISSION_PENDING -> ADMITTED -> LEASE_PENDING -> LEASED -> DISPATCHED -> RUNNING -> OBSERVING
+        """
+        pipe_res = self.coordinate_admission_and_lease(
+            kernel=kernel,
+            resource_mgr=resource_mgr,
+            task_id=task_id,
+            resource_identity=resource_identity,
+            expected_plan_version=expected_plan_version,
+            units=units,
+            duration_seconds=duration_seconds,
+            priority=priority,
+            is_tainted=is_tainted,
+            approval=approval,
+            budget=budget,
+            timeout=timeout,
+            scope=scope,
+        )
+
+        if not pipe_res.leased or pipe_res.terminal_state != TaskState.LEASED.value:
+            return DispatchExecutionResult(
+                task_id=task_id,
+                space_id=kernel.space_id,
+                plan_version=pipe_res.plan_version,
+                status="rejected",
+                terminal_state=pipe_res.terminal_state,
+                error=pipe_res.error,
+                reason=pipe_res.reason,
+            )
+
+        return self.dispatch_task(
+            kernel=kernel,
+            resource_mgr=resource_mgr,
+            task_id=task_id,
+            invoker=invoker,
+            expected_plan_version=pipe_res.plan_version,
+            is_tainted=is_tainted,
+            timeout_seconds=timeout,
         )

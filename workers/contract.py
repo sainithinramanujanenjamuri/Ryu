@@ -213,6 +213,12 @@ class ExecutionRequest:
     execution_limits: ExecutionLimits = field(default_factory=ExecutionLimits)
     sandbox_policy: SandboxPolicy = field(default_factory=SandboxPolicy)
     idempotency_key: str | None = None
+    task_id: str = ""
+    plan_id: str = ""
+    plan_version: int = 1
+    attempt: int = 1
+    is_tainted: bool = False
+    taint: bool = False
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 

@@ -25,6 +25,7 @@ from workers.contract import (
     map_error_to_failure_taxonomy,
 )
 from workers.file.worker import FileWorker
+from workers.invoker import RuntimeWorkerInvoker
 from workers.node.worker import NodeWorker
 from workers.python.worker import PythonWorker
 from workers.shell.worker import ShellWorker
@@ -45,6 +46,7 @@ __all__ = [
     "NetworkPolicyMode",
     "NodeWorker",
     "PythonWorker",
+    "RuntimeWorkerInvoker",
     "SandboxPolicy",
     "ShellWorker",
     "SubagentWorker",

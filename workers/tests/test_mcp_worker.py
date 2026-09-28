@@ -1,13 +1,14 @@
 """Unit tests for MCPWorker execution and pulse emission."""
 
-import pytest
 from unittest.mock import MagicMock
 
+import pytest
 from ryu.pulse_bus.bus import PulseBus
+
 from skills.contract import SkillError
 from skills.mcp.server_registry import MCPServerRegistration, MCPTrustLevel
 from skills.model import RiskTier
-from workers.contract import ExecutionLimits, ExecutionRequest, WorkerIdentity
+from workers.contract import ExecutionRequest
 from workers.mcp.worker import MCPWorker
 
 
