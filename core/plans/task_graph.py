@@ -32,6 +32,10 @@ class TaskNotFoundError(TaskGraphError):
     """Raised when a requested task ID is not found in the TaskGraph."""
 
 
+class PlanConflictError(TaskGraphError):
+    """Raised when a PlanDelta CAS commit fails due to version mismatch or conflict."""
+
+
 class TaskState(str, Enum):
     """Deterministic TaskNode execution lifecycle states (Phase 12, ADR-0041)."""
 

@@ -159,9 +159,46 @@ class SpaceKernel:
         self.verify_space_identity(delta.space_id)
         return self.plan_store.commit_delta(delta, proposal_id=proposal_id)
 
-    def get_task_graph(self) -> TaskGraph:
-        """Retrieve the authoritative TaskGraph for this Space."""
-        return self.plan_store.get_task_graph(self.space_id)
+    def propose_task_transition(
+        self,
+        task_id: str,
+        to_state: str,
+        expected_plan_version: int,
+        from_state: str | None = None,
+        reason: str = "",
+        error: str | None = None,
+        result_ref: str | None = None,
+        proposal_id: str | None = None,
+    ) -> tuple[bool, int, str | None]:
+        """Propose a task lifecycle transition via atomic CAS PlanDelta.
+
+        Enforces Space isolation, state machine validity, and single-writer CAS.
+        """
+        delta = PlanDelta(
+            space_id=self.space_id,
+            base_version=expected_plan_version,
+            resulting_version=expected_plan_version + 1,
+            ops=[
+                {
+                    "op": "transition",
+                    "target_node_id": task_id,
+                    "to_state": to_state,
+                    "from_state": from_state,
+                    "reason": reason,
+                    "error": error,
+                    "result_ref": result_ref,
+                }
+            ],
+        )
+        return self.commit_plan_delta(delta, proposal_id=proposal_id or task_id)
+
+    def get_task_graph(self, version: int | None = None) -> TaskGraph:
+        """Retrieve the authoritative TaskGraph for this Space (current or historical)."""
+        return self.plan_store.get_task_graph(self.space_id, version=version)
+
+    def get_historical_task_graph(self, version: int) -> TaskGraph | None:
+        """Retrieve an immutable historical TaskGraph snapshot for this Space."""
+        return self.plan_store.get_historical_graph(self.space_id, version)
 
     def get_plan_version(self) -> int:
         """Retrieve the authoritative plan_version for this Space."""

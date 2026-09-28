@@ -1549,7 +1549,7 @@ spec_map:
     contract:
       file: "core/plans/task_graph.py"
       rule: "topological sort using Kahn's algorithm and dependency validation"
-    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py"
+    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py, core/space/tests/test_phase12_kernel_cas.py"
     roadmap_phase: 12
     evidence_state: "UNIT_VERIFIED"
 
@@ -1562,7 +1562,7 @@ spec_map:
     contract:
       file: "core/plans/task_graph.py"
       rule: "state machine transition matrix with 11 primary states"
-    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py"
+    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py, core/space/tests/test_phase12_kernel_cas.py"
     roadmap_phase: 12
     evidence_state: "UNIT_VERIFIED"
 
@@ -1601,7 +1601,8 @@ spec_map:
     contract:
       file: "core/orchestrator/dispatch_model.py"
       rule: "abstract protocols for execution, zero concrete worker imports"
-    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py"
+    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py, core/space/tests/test_phase12_kernel_cas.py"
     roadmap_phase: 12
     evidence_state: "UNIT_VERIFIED"
+
 

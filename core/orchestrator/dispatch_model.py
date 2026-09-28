@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Protocol
 
+from core.plans.delta import PlanDelta
 from core.plans.task_graph import (
     TaskGraph,
     TaskNode,
@@ -117,6 +118,21 @@ class TaskDispatcherProtocol(Protocol):
     def get_ready_decisions(
         self, task_graph: TaskGraph, space_id: str
     ) -> list[DispatchDecision]: ...
+
+
+class SpaceKernelAuthorityProtocol(Protocol):
+    """Protocol decoupling Dispatcher from concrete SpaceKernel (AGENTS.md §7)."""
+
+    @property
+    def space_id(self) -> str: ...
+
+    def get_plan_version(self) -> int: ...
+
+    def get_task_graph(self, version: int | None = None) -> TaskGraph: ...
+
+    def commit_plan_delta(
+        self, delta: PlanDelta, proposal_id: str | None = None
+    ) -> tuple[bool, int, str | None]: ...
 
 
 class DeterministicDispatcher:
@@ -269,3 +285,113 @@ class DeterministicDispatcher:
             capability=node.capability,
             idempotency_key=idempotency_key,
         )
+
+    def create_transition_delta(
+        self,
+        space_id: str,
+        task_id: str,
+        to_state: str,
+        expected_plan_version: int,
+        from_state: str | None = None,
+        reason: str = "",
+        error: str | None = None,
+        result_ref: str | None = None,
+        delta_id: str | None = None,
+    ) -> PlanDelta:
+        """Construct a validated PlanDelta for a task lifecycle transition."""
+        ops = [
+            {
+                "op": "transition",
+                "target_node_id": task_id,
+                "to_state": to_state,
+                "from_state": from_state,
+                "reason": reason,
+                "error": error,
+                "result_ref": result_ref,
+            }
+        ]
+        kwargs: dict[str, Any] = {
+            "space_id": space_id,
+            "base_version": expected_plan_version,
+            "resulting_version": expected_plan_version + 1,
+            "ops": ops,
+        }
+        if delta_id:
+            kwargs["delta_id"] = delta_id
+        return PlanDelta(**kwargs)
+
+    def propose_transition(
+        self,
+        kernel: SpaceKernelAuthorityProtocol,
+        task_id: str,
+        to_state: str,
+        expected_plan_version: int,
+        from_state: str | None = None,
+        reason: str = "",
+        error: str | None = None,
+        result_ref: str | None = None,
+    ) -> tuple[bool, int, str | None]:
+        """Propose a task state transition to SpaceKernel via PlanDelta CAS.
+
+        The Dispatcher NEVER directly mutates the PlanStore. SpaceKernel validates authority.
+        """
+        delta = self.create_transition_delta(
+            space_id=kernel.space_id,
+            task_id=task_id,
+            to_state=to_state,
+            expected_plan_version=expected_plan_version,
+            from_state=from_state,
+            reason=reason,
+            error=error,
+            result_ref=result_ref,
+        )
+        return kernel.commit_plan_delta(delta, proposal_id=task_id)
+
+    def rebase_and_propose_transition(
+        self,
+        kernel: SpaceKernelAuthorityProtocol,
+        task_id: str,
+        to_state: str,
+        max_rebases: int = 3,
+        from_state: str | None = None,
+        reason: str = "",
+        error: str | None = None,
+        result_ref: str | None = None,
+    ) -> tuple[bool, int]:
+        """Attempt transition with bounded rebase if concurrent deltas supersede plan version (ADR-0003)."""
+        current_ver = kernel.get_plan_version()
+        success, new_ver, _ = self.propose_transition(
+            kernel=kernel,
+            task_id=task_id,
+            to_state=to_state,
+            expected_plan_version=current_ver,
+            from_state=from_state,
+            reason=reason,
+            error=error,
+            result_ref=result_ref,
+        )
+        if success:
+            return True, new_ver
+
+        for _ in range(max_rebases):
+            latest_ver = kernel.get_plan_version()
+            graph = kernel.get_task_graph()
+            node = graph.get_node(task_id)
+            if node is None:
+                return False, latest_ver
+            if from_state and node.state.lower() != from_state.lower():
+                return False, latest_ver
+            success, rebased_ver, _ = self.propose_transition(
+                kernel=kernel,
+                task_id=task_id,
+                to_state=to_state,
+                expected_plan_version=latest_ver,
+                from_state=from_state,
+                reason=f"{reason} (rebased)",
+                error=error,
+                result_ref=result_ref,
+            )
+            if success:
+                return True, rebased_ver
+
+        return False, kernel.get_plan_version()

@@ -9,13 +9,14 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-ALLOWED_OPS = frozenset({"add", "remove", "reassign", "rollback"})
+ALLOWED_OPS = frozenset({"add", "remove", "reassign", "rollback", "transition"})
 
 
 @dataclass(frozen=True)
 class DeltaOp:
     """Individual operation within a PlanDelta."""
-    op: str  # "add" | "remove" | "reassign" | "rollback"
+
+    op: str  # "add" | "remove" | "reassign" | "rollback" | "transition"
     target_node_id: str
     payload: dict[str, Any] = field(default_factory=dict)
 
@@ -31,6 +32,7 @@ class PlanDelta:
 
     Never in-place mutation. Applied atomically via single-writer CAS.
     """
+
     space_id: str
     base_version: int
     resulting_version: int
@@ -44,8 +46,8 @@ class PlanDelta:
                 f"must be exactly base_version ({self.base_version}) + 1"
             )
         for op in self.ops:
-            op_type = op.get("op")
-            if op_type not in ALLOWED_OPS:
+            op_type: Any = op.op if isinstance(op, DeltaOp) else (op.get("op") if isinstance(op, dict) else getattr(op, "op", None))
+            if not isinstance(op_type, str) or op_type not in ALLOWED_OPS:
                 raise ValueError(
                     f"Invalid operation '{op_type}' in PlanDelta; must be one of {ALLOWED_OPS}"
                 )
