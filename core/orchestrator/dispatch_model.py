@@ -2313,3 +2313,697 @@ class DeterministicDispatcher:
             base_dir=base_dir,
             replay_mode=replay_mode,
         )
+
+
+# ---------------------------------------------------------------------------
+# Phase 12.6 — Convergence Engine / Plan Reconciliation
+# ---------------------------------------------------------------------------
+
+
+class GoalEvaluationStatus(str, Enum):
+    """Formal verdict of goal evaluation against plan evidence (Phase 12.6, spec §10.1)."""
+
+    SATISFIED = "satisfied"
+    UNSATISFIED = "unsatisfied"
+    INCONCLUSIVE = "inconclusive"
+
+
+@dataclass(frozen=True)
+class GoalEvaluationResult:
+    """Strongly-typed, immutable evaluation verdict (Phase 12.6, spec §10.1).
+
+    Invariants:
+    - status is always one of GoalEvaluationStatus (SATISFIED | UNSATISFIED | INCONCLUSIVE).
+    - confidence is in [0.0, 1.0]; 0.0 means 'no signal', 1.0 means 'certain'.
+    - missing_criteria is an exhaustive list of unmet criteria; empty when status=SATISFIED.
+    - GoalEvaluationResult carries ZERO plan mutation authority.
+    """
+
+    status: GoalEvaluationStatus
+    confidence: float
+    reasoning: str
+    missing_criteria: list[str] = field(default_factory=list)
+    evaluated_tasks: int = 0
+    satisfied_tasks: int = 0
+    evidence_count: int = 0
+
+    def __post_init__(self) -> None:
+        if not (0.0 <= self.confidence <= 1.0):
+            raise ValueError(
+                f"GoalEvaluationResult.confidence must be in [0.0, 1.0]; got {self.confidence}"
+            )
+
+    @property
+    def is_satisfied(self) -> bool:
+        return self.status == GoalEvaluationStatus.SATISFIED
+
+
+class DeterministicGoalEvaluator:
+    """LLM-free, evidence-bound goal evaluator (Phase 12.6, spec §10.2).
+
+    Evaluates plan completion by examining task terminal states, artifact SHA-256
+    presence, structured output fields, exit codes, and telemetry — all without
+    calling an external LLM or mutating any authoritative state.
+
+    Invariants:
+    - Zero plan mutation authority: evaluates only; writes nothing.
+    - No imports from workers/, agents/, llm/, memory/, channels/ (AGENTS.md §7).
+    - Deterministic: same inputs always produce identical GoalEvaluationResult.
+    - Replay-safe: can be called during REPLAY_MODE without side effects.
+    """
+
+    def evaluate(
+        self,
+        goal_spec: Any,
+        evidence: list[VerifiedExecutionEvidence],
+    ) -> GoalEvaluationResult:
+        """Evaluate whether the provided evidence satisfies goal_spec.
+
+        Args:
+            goal_spec: Any object with 'objective', 'constraints', 'required_capabilities'
+                       attributes or dict keys. Uses duck-typing for provider independence.
+            evidence:  list of VerifiedExecutionEvidence collected during task execution.
+
+        Returns:
+            GoalEvaluationResult with SATISFIED / UNSATISFIED / INCONCLUSIVE verdict.
+        """
+        if not evidence:
+            return GoalEvaluationResult(
+                status=GoalEvaluationStatus.INCONCLUSIVE,
+                confidence=0.0,
+                reasoning="No execution evidence collected; cannot evaluate goal satisfaction.",
+                missing_criteria=["execution_evidence"],
+                evaluated_tasks=0,
+                satisfied_tasks=0,
+                evidence_count=0,
+            )
+
+        # Collect constraints from goal_spec (duck-type safe)
+        constraints: list[str] = []
+        if hasattr(goal_spec, "constraints"):
+            constraints = list(goal_spec.constraints or [])
+        elif isinstance(goal_spec, dict):
+            constraints = list(goal_spec.get("constraints") or [])
+
+        # Evaluate evidence items
+        verified_count = sum(1 for e in evidence if e.verified and e.status == EvidenceStatus.VERIFIED.value)
+        tainted_count = sum(1 for e in evidence if e.tainted)
+        failed_count = sum(1 for e in evidence if not e.verified)
+        total = len(evidence)
+
+        missing: list[str] = []
+        failure_reasons: list[str] = []
+
+        # Rule 1: All evidence must be verified (no TAMPERED, INVALID, MISSING items)
+        if failed_count > 0:
+            missing.append("all_evidence_verified")
+            failure_reasons.append(
+                f"{failed_count}/{total} evidence item(s) failed verification"
+            )
+
+        # Rule 2: No tainted evidence (unless constraints explicitly allow it)
+        allow_taint = "allow_taint" in constraints
+        if tainted_count > 0 and not allow_taint:
+            missing.append("no_tainted_evidence")
+            failure_reasons.append(
+                f"{tainted_count} tainted evidence item(s) detected"
+            )
+
+        # Rule 3: At least one artifact-type evidence with SHA-256 or exit code 0
+        has_artifact = any(
+            e.evidence_type in ("artifact", EvidenceType.ARTIFACT.value) and e.sha256
+            for e in evidence
+        )
+        has_process_exit = any(
+            e.exit_code == 0 and e.duration_seconds > 0.0
+            for e in evidence
+        )
+        has_structured = any(
+            e.evidence_type in ("structured_output", EvidenceType.STRUCTURED_OUTPUT.value)
+            and e.output_payload
+            for e in evidence
+        )
+
+        if not (has_artifact or has_process_exit or has_structured):
+            missing.append("substantive_execution_evidence")
+            failure_reasons.append(
+                "No artifact SHA-256, successful process exit, or structured output found"
+            )
+
+        # Rule 4: Constraint violations check (deterministic keyword scan)
+        for constraint in constraints:
+            if constraint.startswith("require_artifact:"):
+                required_path = constraint.split(":", 1)[1].strip()
+                found = any(
+                    (e.path or "").endswith(required_path) and e.verified
+                    for e in evidence
+                )
+                if not found:
+                    missing.append(f"required_artifact:{required_path}")
+                    failure_reasons.append(
+                        f"Required artifact '{required_path}' not found in evidence"
+                    )
+            elif constraint.startswith("require_exit_code:"):
+                try:
+                    required_code = int(constraint.split(":", 1)[1].strip())
+                    found = any(e.exit_code == required_code for e in evidence)
+                    if not found:
+                        missing.append(f"required_exit_code:{required_code}")
+                        failure_reasons.append(
+                            f"Required exit code {required_code} not found in evidence"
+                        )
+                except (ValueError, IndexError):
+                    pass
+
+        if missing:
+            confidence = max(0.0, (verified_count / total) * 0.5) if total else 0.0
+            return GoalEvaluationResult(
+                status=GoalEvaluationStatus.UNSATISFIED,
+                confidence=round(confidence, 4),
+                reasoning=(
+                    f"Goal UNSATISFIED: {'; '.join(failure_reasons)}. "
+                    f"Verified {verified_count}/{total} evidence items."
+                ),
+                missing_criteria=missing,
+                evaluated_tasks=total,
+                satisfied_tasks=verified_count,
+                evidence_count=total,
+            )
+
+        confidence = min(1.0, verified_count / total) if total else 0.0
+        return GoalEvaluationResult(
+            status=GoalEvaluationStatus.SATISFIED,
+            confidence=round(confidence, 4),
+            reasoning=(
+                f"Goal SATISFIED: All {verified_count}/{total} evidence items verified. "
+                f"No tainted items, constraints satisfied."
+            ),
+            missing_criteria=[],
+            evaluated_tasks=total,
+            satisfied_tasks=verified_count,
+            evidence_count=total,
+        )
+
+    def evaluate_from_task_graph(
+        self,
+        goal_spec: Any,
+        task_graph: TaskGraph,
+        evidence: list[VerifiedExecutionEvidence],
+    ) -> GoalEvaluationResult:
+        """Evaluate goal satisfaction from both TaskGraph state and collected evidence (Phase 12.6).
+
+        This dual-source evaluation checks task terminal states in addition to
+        artifact-level evidence, providing a higher-confidence verdict.
+        """
+        # All non-optional tasks must be COMPLETED
+        incomplete: list[str] = []
+        failed_tasks: list[str] = []
+        for node in task_graph.nodes:
+            if node.state == TaskState.COMPLETED.value:
+                continue
+            if node.optional and node.state in (
+                TaskState.FAILED.value,
+                TaskState.CANCELLED.value,
+            ):
+                continue
+            if node.state in (TaskState.FAILED.value, TaskState.ESCALATED.value):
+                failed_tasks.append(node.id)
+            else:
+                incomplete.append(node.id)
+
+        if failed_tasks:
+            return GoalEvaluationResult(
+                status=GoalEvaluationStatus.UNSATISFIED,
+                confidence=0.0,
+                reasoning=f"Goal UNSATISFIED: tasks in terminal FAILED state: {failed_tasks}",
+                missing_criteria=[f"task:{tid}" for tid in failed_tasks],
+                evaluated_tasks=len(task_graph.nodes),
+                satisfied_tasks=sum(
+                    1 for n in task_graph.nodes if n.state == TaskState.COMPLETED.value
+                ),
+                evidence_count=len(evidence),
+            )
+
+        if incomplete:
+            return GoalEvaluationResult(
+                status=GoalEvaluationStatus.INCONCLUSIVE,
+                confidence=0.0,
+                reasoning=f"Goal INCONCLUSIVE: tasks still in-flight: {incomplete}",
+                missing_criteria=[f"task:{tid}" for tid in incomplete],
+                evaluated_tasks=len(task_graph.nodes),
+                satisfied_tasks=sum(
+                    1 for n in task_graph.nodes if n.state == TaskState.COMPLETED.value
+                ),
+                evidence_count=len(evidence),
+            )
+
+        # All tasks complete — defer to evidence-level evaluation
+        return self.evaluate(goal_spec, evidence)
+
+
+class ConvergenceDecision(str, Enum):
+    """Deterministic convergence action produced by ConvergenceEngine (Phase 12.6, spec §11.1)."""
+
+    CONTINUE = "continue"    # Next ready tasks in the DAG are scheduled.
+    RETRY = "retry"          # Transient failure; task retried under bounded backoff (≤ 3).
+    REPLAN = "replan"        # Structural failure; PlanReconciler proposes a PlanDelta.
+    ESCALATE = "escalate"    # Budgets exhausted; human intervention requested.
+    ABORT = "abort"          # Terminal unrecoverable violation; Space enters failure.
+
+
+@dataclass(frozen=True)
+class ConvergenceProposal:
+    """Strongly-typed, immutable convergence proposal (Phase 12.6, spec §11.1).
+
+    The ConvergenceEngine produces a ConvergenceProposal; it never directly mutates
+    the plan. All plan changes must flow: Proposal → PlanDelta → SpaceKernel CAS.
+
+    Invariants:
+    - Immutable after creation (frozen=True).
+    - decision is always a ConvergenceDecision enum member.
+    - task_id may be None for plan-level decisions (ABORT, ESCALATE).
+    - retry_attempt is bounded: 0 <= retry_attempt <= MAX_RETRY_BUDGET (3).
+    - replan_attempt is bounded: 0 <= replan_attempt <= MAX_REPLAN_BUDGET (3).
+    - plan_delta is only populated for REPLAN decisions.
+    - plan_delta MUST be committed via SpaceKernel.commit_plan_delta(); ConvergenceEngine
+      has zero authority to apply it directly.
+    """
+
+    decision: ConvergenceDecision
+    space_id: str
+    plan_version: int
+    reasoning: str
+    task_id: str | None = None
+    retry_attempt: int = 0
+    replan_attempt: int = 0
+    plan_delta: PlanDelta | None = None
+    evaluation: GoalEvaluationResult | None = None
+    escalation_reason: str = ""
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    # Failure fingerprint for loop-detection (SHA-256 of space+task+error)
+    failure_fingerprint: str = ""
+
+
+def _compute_failure_fingerprint(space_id: str, task_id: str, error: str) -> str:
+    """Deterministic SHA-256 failure fingerprint for loop-detection (Phase 12.6)."""
+    raw = f"{space_id}:{task_id}:{error}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+class ConvergenceEngine:
+    """Closes the autonomous execution loop by evaluating plan state and proposing convergence actions.
+
+    Phase 12.6 — spec §11, ADR-0041 §2B
+
+    Authority Boundaries (AGENTS.md §6):
+    - ConvergenceEngine CANNOT directly mutate plans, spaces, leases, approvals, or secrets.
+    - GoalEvaluator CANNOT mutate PlanStore or TaskGraph.
+    - LLM output (when injected via GoalEvaluatorProtocol) is a proposal input only, never authority.
+    - Only authoritative path: Proposal → PlanDelta → SpaceKernel.commit_plan_delta() → PlanStore CAS.
+
+    Invariants:
+    - MAX_RETRY_BUDGET = 3: task retries; escalates after 3 transient failures.
+    - MAX_REPLAN_BUDGET = 3: plan replans; escalates after 3 structural failures.
+    - Failure fingerprinting prevents the same failure from triggering unbounded distinct replans.
+    - REPLAY_MODE: produces identical proposals from identical pulse sequences; no side effects.
+    - LLM cannot override convergence budgets regardless of output content.
+    """
+
+    MAX_RETRY_BUDGET = 3
+    MAX_REPLAN_BUDGET = 3
+
+    def __init__(
+        self,
+        space_id: str,
+        reconciler: Any,  # PlanReconciler — protocol-typed to avoid tight coupling
+        goal_evaluator: GoalEvaluatorProtocol | None = None,
+        replay_mode: bool = False,
+    ) -> None:
+        self.space_id = space_id
+        self.reconciler = reconciler
+        self.goal_evaluator = goal_evaluator or DeterministicGoalEvaluator()
+        self.replay_mode = replay_mode
+        # Bounded counters — keyed per task_id
+        self._retry_counts: dict[str, int] = {}
+        self._replan_counts: dict[str, int] = {}
+        # Failure fingerprint registry for loop detection
+        self._seen_fingerprints: set[str] = set()
+
+    def evaluate_and_propose(
+        self,
+        kernel: SpaceKernelAuthorityProtocol,
+        goal_spec: Any,
+        evidence: list[VerifiedExecutionEvidence],
+        failed_task_id: str | None = None,
+        error_class: str = "",
+        error_message: str = "",
+    ) -> ConvergenceProposal:
+        """Evaluate plan state and produce a deterministic ConvergenceProposal.
+
+        This is the primary entry point. The caller (SpaceOrchestrator or runtime loop)
+        is responsible for acting on the proposal via SpaceKernel CAS.
+
+        Args:
+            kernel:          SpaceKernel authority (read-only query; no mutations).
+            goal_spec:       Human goal specification (GoalSpec or compatible duck-type).
+            evidence:        Collected VerifiedExecutionEvidence from completed tasks.
+            failed_task_id:  Task that just failed, if any (None for non-failure calls).
+            error_class:     Failure taxonomy class (e.g. "transient.timeout").
+            error_message:   Human-readable failure message.
+
+        Returns:
+            ConvergenceProposal with decision + optional plan_delta for REPLAN.
+        """
+        kernel.verify_space_identity(self.space_id)
+        plan_version = kernel.get_plan_version()
+        task_graph = kernel.get_task_graph()
+
+        # ── 1. Failure path ──────────────────────────────────────────────────
+        if failed_task_id is not None:
+            return self._handle_failure(
+                kernel=kernel,
+                plan_version=plan_version,
+                task_graph=task_graph,
+                failed_task_id=failed_task_id,
+                error_class=error_class,
+                error_message=error_message,
+            )
+
+        # ── 2. Non-failure: evaluate goal satisfaction ───────────────────────
+        eval_result = self.goal_evaluator.evaluate(goal_spec, evidence)
+
+        if eval_result.status == GoalEvaluationStatus.SATISFIED:
+            return ConvergenceProposal(
+                decision=ConvergenceDecision.CONTINUE,
+                space_id=self.space_id,
+                plan_version=plan_version,
+                reasoning=f"Goal SATISFIED with confidence {eval_result.confidence:.2%}. "
+                          f"Plan convergence complete.",
+                evaluation=eval_result,
+            )
+
+        if eval_result.status == GoalEvaluationStatus.INCONCLUSIVE:
+            # Still tasks in-flight; continue execution
+            return ConvergenceProposal(
+                decision=ConvergenceDecision.CONTINUE,
+                space_id=self.space_id,
+                plan_version=plan_version,
+                reasoning="Goal evaluation inconclusive; continuing task execution.",
+                evaluation=eval_result,
+            )
+
+        # UNSATISFIED — check if any tasks are still running or ready
+        active_states = {TaskState.READY.value, TaskState.RUNNING.value,
+                         TaskState.DISPATCHED.value, TaskState.OBSERVING.value,
+                         TaskState.EVALUATING.value}
+        still_running = [n for n in task_graph.nodes if n.state in active_states]
+        if still_running:
+            return ConvergenceProposal(
+                decision=ConvergenceDecision.CONTINUE,
+                space_id=self.space_id,
+                plan_version=plan_version,
+                reasoning=f"Tasks still in-flight ({len(still_running)}); continuing.",
+                evaluation=eval_result,
+            )
+
+        # All tasks finished but goal unsatisfied → REPLAN
+        return self._propose_replan(
+            kernel=kernel,
+            plan_version=plan_version,
+            eval_result=eval_result,
+            task_id=None,
+            reason="Goal UNSATISFIED after plan exhaustion",
+        )
+
+    def _handle_failure(
+        self,
+        kernel: SpaceKernelAuthorityProtocol,
+        plan_version: int,
+        task_graph: TaskGraph,
+        failed_task_id: str,
+        error_class: str,
+        error_message: str,
+    ) -> ConvergenceProposal:
+        """Handle a task failure via bounded retry → replan → escalate chain (SCCA Law 6)."""
+        fingerprint = _compute_failure_fingerprint(
+            self.space_id, failed_task_id, error_class
+        )
+
+        # ── Terminal errors: escalate immediately (no retries) ───────────────
+        terminal_classes = {
+            "terminal.permission_denied",
+            "terminal.budget_exceeded",
+            "terminal.security_violation",
+            "terminal.space_terminated",
+        }
+        if error_class in terminal_classes:
+            return ConvergenceProposal(
+                decision=ConvergenceDecision.ESCALATE,
+                space_id=self.space_id,
+                plan_version=plan_version,
+                task_id=failed_task_id,
+                reasoning=f"Terminal error '{error_class}' for task '{failed_task_id}': "
+                          f"{error_message}. Immediate human escalation required.",
+                escalation_reason=f"{error_class}: {error_message}",
+                failure_fingerprint=fingerprint,
+            )
+
+        # ── Abort on unrecoverable violations ───────────────────────────────
+        if error_class.startswith("violation."):
+            return ConvergenceProposal(
+                decision=ConvergenceDecision.ABORT,
+                space_id=self.space_id,
+                plan_version=plan_version,
+                task_id=failed_task_id,
+                reasoning=f"Unrecoverable violation '{error_class}' for task '{failed_task_id}'. "
+                          f"Aborting space execution.",
+                failure_fingerprint=fingerprint,
+            )
+
+        # ── Transient errors: bounded retry ──────────────────────────────────
+        if error_class.startswith("transient."):
+            current_retries = self._retry_counts.get(failed_task_id, 0)
+            if current_retries < self.MAX_RETRY_BUDGET:
+                new_count = current_retries + 1
+                self._retry_counts[failed_task_id] = new_count
+                return ConvergenceProposal(
+                    decision=ConvergenceDecision.RETRY,
+                    space_id=self.space_id,
+                    plan_version=plan_version,
+                    task_id=failed_task_id,
+                    retry_attempt=new_count,
+                    reasoning=(
+                        f"Transient failure '{error_class}' for task '{failed_task_id}' "
+                        f"(attempt {new_count}/{self.MAX_RETRY_BUDGET}). Scheduling retry."
+                    ),
+                    failure_fingerprint=fingerprint,
+                )
+            else:
+                # Retry budget exhausted → fall through to replan
+                reason = (
+                    f"Retry budget exhausted ({self.MAX_RETRY_BUDGET} attempts) "
+                    f"for task '{failed_task_id}' on '{error_class}'."
+                )
+                return self._propose_replan(
+                    kernel=kernel,
+                    plan_version=plan_version,
+                    eval_result=None,
+                    task_id=failed_task_id,
+                    reason=reason,
+                    fingerprint=fingerprint,
+                )
+
+        # ── Unknown / structural failures: replan ────────────────────────────
+        return self._propose_replan(
+            kernel=kernel,
+            plan_version=plan_version,
+            eval_result=None,
+            task_id=failed_task_id,
+            reason=f"Structural failure '{error_class}': {error_message}",
+            fingerprint=fingerprint,
+        )
+
+    def _propose_replan(
+        self,
+        kernel: SpaceKernelAuthorityProtocol,
+        plan_version: int,
+        eval_result: GoalEvaluationResult | None,
+        task_id: str | None,
+        reason: str,
+        fingerprint: str = "",
+    ) -> ConvergenceProposal:
+        """Propose a REPLAN via PlanDelta or escalate if replan budget is exhausted."""
+        replan_key = task_id or "__plan__"
+        current_replans = self._replan_counts.get(replan_key, 0)
+
+        # Infinite-loop prevention: if same fingerprint seen twice, escalate
+        if fingerprint and fingerprint in self._seen_fingerprints:
+            return ConvergenceProposal(
+                decision=ConvergenceDecision.ESCALATE,
+                space_id=self.space_id,
+                plan_version=plan_version,
+                task_id=task_id,
+                reasoning=(
+                    f"Failure fingerprint '{fingerprint}' repeated — infinite loop detected. "
+                    f"Escalating to human operator."
+                ),
+                escalation_reason=f"Infinite loop guard triggered: {reason}",
+                replan_attempt=current_replans,
+                failure_fingerprint=fingerprint,
+                evaluation=eval_result,
+            )
+
+        if current_replans >= self.MAX_REPLAN_BUDGET:
+            return ConvergenceProposal(
+                decision=ConvergenceDecision.ESCALATE,
+                space_id=self.space_id,
+                plan_version=plan_version,
+                task_id=task_id,
+                reasoning=(
+                    f"Replan budget exhausted ({self.MAX_REPLAN_BUDGET} replans) for "
+                    f"'{replan_key}'. Escalating to human operator. Reason: {reason}"
+                ),
+                escalation_reason=f"Replan budget exhausted: {reason}",
+                replan_attempt=current_replans,
+                failure_fingerprint=fingerprint,
+                evaluation=eval_result,
+            )
+
+        # Record fingerprint and increment replan counter
+        if fingerprint:
+            self._seen_fingerprints.add(fingerprint)
+        new_replan_count = current_replans + 1
+        self._replan_counts[replan_key] = new_replan_count
+
+        # Build PlanDelta for REPLAN — uses "rollback" op (legal in ALLOWED_OPS).
+        # "rollback" is the correct structural recovery op for replanning.
+        # The Dispatcher does NOT commit this; the caller must pass it to SpaceKernel.
+        replan_ops: list[dict[str, Any]] = []
+        if task_id is not None:
+            replan_ops.append(
+                {
+                    "op": "rollback",
+                    "target_node_id": task_id,
+                    "payload": {
+                        "reason": reason,
+                        "replan_attempt": new_replan_count,
+                        "failure_fingerprint": fingerprint,
+                    },
+                }
+            )
+        else:
+            replan_ops.append(
+                {
+                    "op": "rollback",
+                    "target_node_id": "__plan__",
+                    "payload": {
+                        "reason": reason,
+                        "replan_attempt": new_replan_count,
+                        "missing_criteria": (
+                            eval_result.missing_criteria if eval_result else []
+                        ),
+                    },
+                }
+            )
+
+        plan_delta = PlanDelta(
+            space_id=self.space_id,
+            base_version=plan_version,
+            resulting_version=plan_version + 1,
+            ops=replan_ops,
+            delta_id=f"replan-{replan_key}-attempt-{new_replan_count}",
+        )
+
+        return ConvergenceProposal(
+            decision=ConvergenceDecision.REPLAN,
+            space_id=self.space_id,
+            plan_version=plan_version,
+            task_id=task_id,
+            reasoning=(
+                f"REPLAN proposed (attempt {new_replan_count}/{self.MAX_REPLAN_BUDGET}). "
+                f"Reason: {reason}"
+            ),
+            replan_attempt=new_replan_count,
+            plan_delta=plan_delta,
+            evaluation=eval_result,
+            failure_fingerprint=fingerprint,
+        )
+
+    def apply_proposal(
+        self,
+        proposal: ConvergenceProposal,
+        kernel: SpaceKernelAuthorityProtocol,
+    ) -> tuple[bool, int, str | None]:
+        """Apply a ConvergenceProposal's PlanDelta via SpaceKernel CAS (Phase 12.6).
+
+        This is the ONLY method that touches the authoritative plan state.
+        For CONTINUE / RETRY / ESCALATE / ABORT decisions, no CAS is performed here.
+        For REPLAN decisions, the plan_delta is submitted to SpaceKernel.commit_plan_delta().
+
+        Returns:
+            (success: bool, new_plan_version: int, error: str | None)
+        """
+        kernel.verify_space_identity(self.space_id)
+
+        if proposal.decision != ConvergenceDecision.REPLAN:
+            # Non-replan decisions don't mutate the plan
+            return True, proposal.plan_version, None
+
+        if proposal.plan_delta is None:
+            return (
+                False,
+                proposal.plan_version,
+                "REPLAN decision has no PlanDelta to apply",
+            )
+
+        # Bounded rebase loop: at most MAX_REPLAN_BUDGET CAS attempts
+        delta = proposal.plan_delta
+        for attempt in range(self.reconciler.max_rebases if self.reconciler else 3):
+            ok, new_ver, err = kernel.commit_plan_delta(
+                delta, proposal_id=delta.delta_id
+            )
+            if ok:
+                return True, new_ver, None
+            # Rebase stale delta onto latest version
+            latest = kernel.get_plan_version()
+            delta = PlanDelta(
+                space_id=self.space_id,
+                base_version=latest,
+                resulting_version=latest + 1,
+                ops=delta.ops,
+                delta_id=f"{delta.delta_id}-rebase-{attempt + 1}",
+            )
+
+        return False, kernel.get_plan_version(), "CAS rebase limit exceeded during REPLAN"
+
+    def is_plan_converged(self, task_graph: TaskGraph) -> bool:
+        """Return True if every non-optional task in the graph is in a terminal state (Phase 12.6)."""
+        terminal = {
+            TaskState.COMPLETED.value,
+            TaskState.FAILED.value,
+            TaskState.CANCELLED.value,
+            TaskState.ESCALATED.value,
+        }
+        for node in task_graph.nodes:
+            if node.state not in terminal and not node.optional:
+                return False
+        return True
+
+    def is_plan_succeeded(self, task_graph: TaskGraph) -> bool:
+        """Return True if every non-optional task reached COMPLETED (goal achieved, Phase 12.6)."""
+        for node in task_graph.nodes:
+            if node.optional:
+                continue
+            if node.state != TaskState.COMPLETED.value:
+                return False
+        return True
+
+    def reset_task_budgets(self, task_id: str) -> None:
+        """Reset retry/replan budgets for a task after a successful replan (Phase 12.6).
+
+        Called by the orchestration loop when a REPLAN is accepted and the task
+        is given a fresh identity in the new plan version.
+        """
+        self._retry_counts.pop(task_id, None)
+        self._replan_counts.pop(task_id, None)
