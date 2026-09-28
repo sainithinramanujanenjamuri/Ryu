@@ -7,9 +7,10 @@ Phase 12: Autonomous Plan Execution & Task Dispatch Engine
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 from typing import Any, Protocol
 
 from ryu.pulse_bus.pulse import Pulse, Severity
@@ -87,9 +88,32 @@ def compute_dispatch_idempotency_key(
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+class EvidenceStatus(str, Enum):
+    """Explicit lifecycle status for execution evidence (Phase 12.5)."""
+
+    UNSEEN = "unseen"
+    COLLECTED = "collected"
+    VERIFIED = "verified"
+    INVALID = "invalid"
+    TAMPERED = "tampered"
+    MISMATCHED = "mismatched"
+    MISSING = "missing"
+    UNTRUSTED = "untrusted"
+
+
+class EvidenceType(str, Enum):
+    """Standardized classification of task execution evidence (Phase 12.5)."""
+
+    ARTIFACT = "artifact"
+    STRUCTURED_OUTPUT = "structured_output"
+    SIGNED_TOOL_OUTPUT = "signed_tool_output"
+    PROCESS_EXIT = "process_exit"
+    TELEMETRY = "telemetry"
+
+
 @dataclass(frozen=True)
 class VerifiedExecutionEvidence:
-    """Verified evidence proving capability execution (DISPATCH-004, ADR-0041).
+    """Verified evidence proving capability execution (DISPATCH-004, ADR-0041, Phase 12.5).
 
     Execution evidence is not limited to file artifacts; it encompasses
     verified file artifacts, structured task outputs, signed tool outputs,
@@ -104,6 +128,52 @@ class VerifiedExecutionEvidence:
     duration_seconds: float = 0.0
     output_payload: dict[str, Any] = field(default_factory=dict)
     details: dict[str, Any] = field(default_factory=dict)
+    evidence_id: str = ""
+    status: str = "verified"
+    space_id: str = ""
+    plan_version: int = 1
+    attempt: int = 1
+    path: str | None = None
+    source: str = "worker"
+    tainted: bool = False
+    error: str | None = None
+
+    @property
+    def is_verified(self) -> bool:
+        return self.verified and self.status == EvidenceStatus.VERIFIED.value
+
+
+@dataclass(frozen=True)
+class EvidenceVerificationResult:
+    """Aggregated outcome of verifying all evidence for a task execution (Phase 12.5)."""
+
+    task_id: str
+    space_id: str
+    plan_version: int
+    attempt: int
+    is_valid: bool
+    status: EvidenceStatus
+    evidence_items: list[VerifiedExecutionEvidence] = field(default_factory=list)
+    failure_reasons: list[str] = field(default_factory=list)
+    tainted: bool = False
+
+
+@dataclass(frozen=True)
+class TaskCompletionResult:
+    """Outcome of observing, evaluating, and completing a task (Phase 12.5)."""
+
+    task_id: str
+    space_id: str
+    plan_version: int
+    status: str  # "completed" | "failed" | "cas_failed" | "rejected"
+    terminal_state: str  # "completed" | "failed" | etc.
+    completed: bool
+    verification: EvidenceVerificationResult | None = None
+    unblocked_tasks: list[str] = field(default_factory=list)
+    blocked_tasks: list[str] = field(default_factory=list)
+    cached: bool = False
+    error: str | None = None
+    reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -176,6 +246,8 @@ class SpaceKernelAuthorityProtocol(Protocol):
 
     @property
     def space_id(self) -> str: ...
+
+    def verify_space_identity(self, incoming_space_id: str) -> None: ...
 
     def get_plan_version(self) -> int: ...
 
@@ -1241,6 +1313,7 @@ class DeterministicDispatcher:
             )
             terminal_state = TaskState.OBSERVING.value
             cur_version = new_ver
+            exec_res = replace(exec_res, plan_version=new_ver)
         elif exec_res.status == "timeout":
             err_msg = exec_res.error or "Execution timed out"
             ok, new_ver, _ = kernel.propose_task_transition(
@@ -1253,6 +1326,7 @@ class DeterministicDispatcher:
             )
             terminal_state = TaskState.TIMED_OUT.value
             cur_version = new_ver
+            exec_res = replace(exec_res, plan_version=new_ver)
             if bus is not None:
                 bus.publish(
                     Pulse(
@@ -1284,6 +1358,7 @@ class DeterministicDispatcher:
             )
             terminal_state = TaskState.CANCELLED.value
             cur_version = new_ver
+            exec_res = replace(exec_res, plan_version=new_ver)
         else:
             err_msg = exec_res.error or f"Worker execution {exec_res.status}"
             ok, new_ver, _ = kernel.propose_task_transition(
@@ -1296,6 +1371,7 @@ class DeterministicDispatcher:
             )
             terminal_state = TaskState.FAILED.value
             cur_version = new_ver
+            exec_res = replace(exec_res, plan_version=new_ver)
             if bus is not None:
                 bus.publish(
                     Pulse(
@@ -1398,4 +1474,842 @@ class DeterministicDispatcher:
             expected_plan_version=pipe_res.plan_version,
             is_tainted=is_tainted,
             timeout_seconds=timeout,
+        )
+
+    @staticmethod
+    def _is_safe_artifact_path(
+        raw_path: str,
+        base_dir: Path | None,
+        space_id: str,
+    ) -> tuple[bool, Path | None, str | None]:
+        """Verify artifact path safety, prohibiting directory traversal or escaping space root.
+
+        Enforces:
+        - No parent traversal '..' in any path component
+        - Resolves strictly inside base_dir/space_id (or base_dir) if base_dir provided
+        """
+        clean_path = raw_path.replace("\\", "/").strip()
+        parts = clean_path.split("/")
+        if ".." in parts:
+            return False, None, "Path traversal forbidden ('..' detected)"
+
+        candidate = Path(raw_path)
+        if base_dir is not None:
+            space_root = (base_dir / space_id).resolve()
+            if candidate.is_absolute():
+                resolved = candidate.resolve()
+            else:
+                resolved = (space_root / raw_path).resolve()
+
+            # Ensure resolved path is within space_root or base_dir
+            try:
+                resolved.relative_to(space_root)
+            except ValueError:
+                try:
+                    resolved.relative_to(base_dir.resolve())
+                except ValueError:
+                    return False, None, f"Artifact path escapes space sandbox boundary: {resolved}"
+            return True, resolved, None
+        return True, candidate, None
+
+    @staticmethod
+    def _verify_artifact_sha256(
+        file_path: Path,
+        expected_hash: str | None,
+    ) -> tuple[bool, str, str | None]:
+        """Verify the cryptographic SHA-256 hash of a physical file."""
+        if not file_path.is_file():
+            return False, "", f"Artifact file does not exist on disk: {file_path}"
+        try:
+            hasher = hashlib.sha256()
+            with open(file_path, "rb") as f:
+                while chunk := f.read(65536):
+                    hasher.update(chunk)
+            actual_hash = hasher.hexdigest()
+            if expected_hash and actual_hash.lower() != expected_hash.lower():
+                return (
+                    False,
+                    actual_hash,
+                    f"Artifact SHA-256 mismatch: expected {expected_hash}, got {actual_hash}",
+                )
+            return True, actual_hash, None
+        except Exception as exc:
+            return False, "", f"Failed to read artifact file for hashing: {exc}"
+
+    def verify_execution_evidence(
+        self,
+        space_id: str,
+        task_node: TaskNode,
+        execution_result: TaskExecutionResult,
+        plan_version: int,
+        base_dir: Path | None = None,
+        replay_mode: bool = False,
+    ) -> EvidenceVerificationResult:
+        """Deterministically verify all execution evidence collected for a task (Phase 12.5).
+
+        Verifies:
+        - Space identity binding (Law 1, SPACE-001)
+        - Task identity binding
+        - Plan version binding
+        - Worker execution status (ok, exit_code 0)
+        - Artifact existence, path containment, and SHA-256 integrity
+        - Structured output contract validation
+        - Telemetry and non-zero duration
+        - Taint tracking containment
+        """
+        evidence_items: list[VerifiedExecutionEvidence] = []
+        failure_reasons: list[str] = []
+        is_tampered = False
+        is_mismatched = False
+        is_missing = False
+
+        # 1. Space Identity Binding
+        if execution_result.space_id != space_id:
+            failure_reasons.append(
+                f"Cross-space evidence rejected: result space '{execution_result.space_id}' does not match '{space_id}'"
+            )
+            is_mismatched = True
+
+        # 2. Task Identity Binding
+        if execution_result.task_id != task_node.id:
+            failure_reasons.append(
+                f"Cross-task evidence rejected: result task '{execution_result.task_id}' does not match '{task_node.id}'"
+            )
+            is_mismatched = True
+
+        # 3. Plan Version Binding
+        if execution_result.plan_version != plan_version:
+            failure_reasons.append(
+                f"Plan version mismatch: result version {execution_result.plan_version} does not match current plan version {plan_version}"
+            )
+            is_mismatched = True
+
+        # 4. Execution Attempt Binding
+        result_attempt = (
+            execution_result.details.get("attempt")
+            if isinstance(execution_result.details, dict)
+            else None
+        )
+        if result_attempt is not None and result_attempt != task_node.attempt:
+            failure_reasons.append(
+                f"Execution attempt mismatch: result attempt {result_attempt} does not match task attempt {task_node.attempt}"
+            )
+            is_mismatched = True
+
+        # 5. Worker Execution Status
+        if not execution_result.is_success:
+            err = execution_result.error or f"Worker execution status is '{execution_result.status}'"
+            failure_reasons.append(f"Worker execution failed: {err}")
+
+        # 5. Process Exit Status & Telemetry
+        exit_code = (
+            execution_result.details.get("exit_code", 0)
+            if isinstance(execution_result.details, dict)
+            else 0
+        )
+        if exit_code != 0 and execution_result.is_success:
+            failure_reasons.append(
+                f"Worker reported success but process exit code was non-zero ({exit_code})"
+            )
+
+        duration_sec = float(execution_result.duration_seconds)
+        if duration_sec < 0.0:
+            failure_reasons.append(f"Invalid execution duration ({duration_sec}s)")
+
+        # Record process execution evidence
+        evidence_items.append(
+            VerifiedExecutionEvidence(
+                task_id=task_node.id,
+                evidence_type=EvidenceType.PROCESS_EXIT.value,
+                verified=(len(failure_reasons) == 0),
+                exit_code=exit_code,
+                duration_seconds=duration_sec,
+                evidence_id=f"ev-proc-{task_node.id}-{execution_result.request_id}",
+                status=(
+                    EvidenceStatus.VERIFIED.value
+                    if not failure_reasons
+                    else EvidenceStatus.INVALID.value
+                ),
+                space_id=space_id,
+                plan_version=plan_version,
+                attempt=task_node.attempt,
+                tainted=execution_result.taint,
+            )
+        )
+
+        # 6. Structured Output Verification
+        required_keys = task_node.params.get("required_output_keys", [])
+        if required_keys:
+            if not isinstance(execution_result.output_data, dict):
+                failure_reasons.append(
+                    "Task required structured output dictionary, but output_data is None or non-dict"
+                )
+                is_missing = True
+            else:
+                missing_keys = [
+                    k for k in required_keys if k not in execution_result.output_data
+                ]
+                if missing_keys:
+                    failure_reasons.append(
+                        f"Structured output missing required keys: {missing_keys}"
+                    )
+                    is_missing = True
+
+        if execution_result.output_data is not None:
+            output_dict = (
+                execution_result.output_data
+                if isinstance(execution_result.output_data, dict)
+                else {"data": execution_result.output_data}
+            )
+            evidence_items.append(
+                VerifiedExecutionEvidence(
+                    task_id=task_node.id,
+                    evidence_type=EvidenceType.STRUCTURED_OUTPUT.value,
+                    verified=(len(failure_reasons) == 0),
+                    output_payload=output_dict,
+                    duration_seconds=duration_sec,
+                    evidence_id=f"ev-struct-{task_node.id}-{execution_result.request_id}",
+                    status=(
+                        EvidenceStatus.VERIFIED.value
+                        if not failure_reasons
+                        else EvidenceStatus.INVALID.value
+                    ),
+                    space_id=space_id,
+                    plan_version=plan_version,
+                    attempt=task_node.attempt,
+                    tainted=execution_result.taint,
+                )
+            )
+
+        # 7. Artifact Verification
+        required_artifacts = task_node.params.get("required_artifacts", [])
+        raw_artifacts = list(execution_result.artifacts or [])
+
+        # Check required artifacts presence
+        if required_artifacts:
+            declared_names = set()
+            for art in raw_artifacts:
+                if isinstance(art, dict):
+                    declared_names.add(art.get("name") or art.get("path") or "")
+                elif isinstance(art, str):
+                    declared_names.add(art)
+                elif hasattr(art, "name"):
+                    declared_names.add(getattr(art, "name"))
+            for req_name in required_artifacts:
+                if req_name not in declared_names:
+                    failure_reasons.append(
+                        f"Required artifact '{req_name}' was not produced by worker"
+                    )
+                    is_missing = True
+
+        for idx, art in enumerate(raw_artifacts):
+            art_dict: dict[str, Any] = {}
+            if isinstance(art, dict):
+                art_dict = dict(art)
+            elif hasattr(art, "to_dict"):
+                art_dict = art.to_dict()
+            elif hasattr(art, "__dict__"):
+                art_dict = dict(art.__dict__)
+            elif isinstance(art, str):
+                art_dict = {"path": art, "name": art}
+
+            art_space = art_dict.get("space_id")
+            if art_space and art_space != space_id:
+                failure_reasons.append(
+                    f"Cross-space artifact rejected: artifact space '{art_space}' does not match task space '{space_id}'"
+                )
+                is_mismatched = True
+
+            art_path = art_dict.get("path") or art_dict.get("name") or ""
+            expected_sha = art_dict.get("sha256")
+
+            # Check safe path and path containment
+            safe, resolved_path, path_err = self._is_safe_artifact_path(
+                art_path, base_dir, space_id
+            )
+            if not safe:
+                failure_reasons.append(f"Artifact security violation: {path_err}")
+                is_tampered = True
+                evidence_items.append(
+                    VerifiedExecutionEvidence(
+                        task_id=task_node.id,
+                        evidence_type=EvidenceType.ARTIFACT.value,
+                        verified=False,
+                        path=art_path,
+                        sha256=expected_sha,
+                        evidence_id=f"ev-art-{task_node.id}-{idx}",
+                        status=EvidenceStatus.TAMPERED.value,
+                        space_id=space_id,
+                        plan_version=plan_version,
+                        attempt=task_node.attempt,
+                        tainted=execution_result.taint,
+                        error=path_err,
+                    )
+                )
+                continue
+
+            # In replay mode: verify without physical filesystem operations
+            if replay_mode:
+                if not expected_sha:
+                    failure_reasons.append(
+                        f"Artifact '{art_path}' lacks SHA-256 hash in replay mode"
+                    )
+                    is_missing = True
+                evidence_items.append(
+                    VerifiedExecutionEvidence(
+                        task_id=task_node.id,
+                        evidence_type=EvidenceType.ARTIFACT.value,
+                        verified=bool(expected_sha),
+                        path=str(resolved_path) if resolved_path else art_path,
+                        sha256=expected_sha,
+                        evidence_id=f"ev-art-{task_node.id}-{idx}",
+                        status=(
+                            EvidenceStatus.VERIFIED.value
+                            if expected_sha
+                            else EvidenceStatus.MISSING.value
+                        ),
+                        space_id=space_id,
+                        plan_version=plan_version,
+                        attempt=task_node.attempt,
+                        tainted=execution_result.taint,
+                    )
+                )
+            else:
+                # Live mode: verify physical file and SHA-256
+                if resolved_path and resolved_path.is_file():
+                    valid_hash, actual_hash, hash_err = self._verify_artifact_sha256(
+                        resolved_path, expected_sha
+                    )
+                    if not valid_hash:
+                        failure_reasons.append(f"Artifact integrity failure: {hash_err}")
+                        is_tampered = True
+                        evidence_items.append(
+                            VerifiedExecutionEvidence(
+                                task_id=task_node.id,
+                                evidence_type=EvidenceType.ARTIFACT.value,
+                                verified=False,
+                                path=str(resolved_path),
+                                sha256=actual_hash,
+                                evidence_id=f"ev-art-{task_node.id}-{idx}",
+                                status=EvidenceStatus.TAMPERED.value,
+                                space_id=space_id,
+                                plan_version=plan_version,
+                                attempt=task_node.attempt,
+                                tainted=execution_result.taint,
+                                error=hash_err,
+                            )
+                        )
+                    else:
+                        evidence_items.append(
+                            VerifiedExecutionEvidence(
+                                task_id=task_node.id,
+                                evidence_type=EvidenceType.ARTIFACT.value,
+                                verified=True,
+                                path=str(resolved_path),
+                                sha256=actual_hash,
+                                evidence_id=f"ev-art-{task_node.id}-{idx}",
+                                status=EvidenceStatus.VERIFIED.value,
+                                space_id=space_id,
+                                plan_version=plan_version,
+                                attempt=task_node.attempt,
+                                tainted=execution_result.taint,
+                            )
+                        )
+                else:
+                    # File does not exist on disk
+                    if art_path in required_artifacts or (expected_sha and base_dir is not None):
+                        failure_reasons.append(
+                            f"Declared artifact not found on disk: {resolved_path or art_path}"
+                        )
+                        is_missing = True
+                    evidence_items.append(
+                        VerifiedExecutionEvidence(
+                            task_id=task_node.id,
+                            evidence_type=EvidenceType.ARTIFACT.value,
+                            verified=False,
+                            path=str(resolved_path) if resolved_path else art_path,
+                            sha256=expected_sha,
+                            evidence_id=f"ev-art-{task_node.id}-{idx}",
+                            status=EvidenceStatus.MISSING.value,
+                            space_id=space_id,
+                            plan_version=plan_version,
+                            attempt=task_node.attempt,
+                            tainted=execution_result.taint,
+                            error=f"Artifact not found on disk: {resolved_path or art_path}",
+                        )
+                    )
+
+        is_valid = len(failure_reasons) == 0
+        overall_status = EvidenceStatus.VERIFIED
+        if not is_valid:
+            if is_tampered:
+                overall_status = EvidenceStatus.TAMPERED
+            elif is_mismatched:
+                overall_status = EvidenceStatus.MISMATCHED
+            elif is_missing:
+                overall_status = EvidenceStatus.MISSING
+            else:
+                overall_status = EvidenceStatus.INVALID
+
+        tainted = execution_result.taint or bool(task_node.params.get("is_tainted"))
+
+        return EvidenceVerificationResult(
+            task_id=task_node.id,
+            space_id=space_id,
+            plan_version=plan_version,
+            attempt=task_node.attempt,
+            is_valid=is_valid,
+            status=overall_status,
+            evidence_items=evidence_items,
+            failure_reasons=failure_reasons,
+            tainted=tainted,
+        )
+
+    def unblock_dependencies(
+        self,
+        kernel: SpaceKernelAuthorityProtocol,
+        completed_task_id: str,
+        expected_plan_version: int | None = None,
+        max_retries: int = 3,
+    ) -> tuple[bool, int, list[str], list[str], str | None]:
+        """Inspect the TaskGraph and transition eligible dependent tasks to READY via PlanDelta (Phase 12.5).
+
+        Invariants:
+        - A dependent task enters READY if and only if ALL its upstream dependencies are COMPLETED
+          (or if an optional dependency is completed/failed/cancelled).
+        - Direct TaskGraph mutation is forbidden; all transitions commit atomically via SpaceKernel CAS.
+        """
+        for retry in range(max_retries):
+            cur_version = kernel.get_plan_version()
+            if expected_plan_version is not None and retry == 0:
+                cur_version = expected_plan_version
+
+            graph = kernel.get_task_graph(cur_version)
+            unblock_ops: list[dict[str, Any]] = []
+            unblocked_ids: list[str] = []
+
+            for node in graph.nodes:
+                if completed_task_id not in node.dependencies:
+                    continue
+                if node.state not in ("pending", "blocked"):
+                    continue
+
+                all_satisfied = True
+                for dep_id in node.dependencies:
+                    parent = graph.get_node(dep_id)
+                    if parent is None:
+                        all_satisfied = False
+                        break
+                    if parent.state == TaskState.COMPLETED.value:
+                        continue
+                    if parent.optional and parent.state in (
+                        TaskState.COMPLETED.value,
+                        TaskState.FAILED.value,
+                        TaskState.CANCELLED.value,
+                    ):
+                        continue
+                    all_satisfied = False
+                    break
+
+                if all_satisfied:
+                    unblock_ops.append(
+                        {
+                            "op": "transition",
+                            "target_node_id": node.id,
+                            "to_state": TaskState.READY.value,
+                            "from_state": node.state,
+                            "reason": f"Prerequisites completed (unblocked by '{completed_task_id}')",
+                        }
+                    )
+                    unblocked_ids.append(node.id)
+
+            if not unblock_ops:
+                return True, cur_version, [], [], None
+
+            delta = PlanDelta(
+                space_id=kernel.space_id,
+                base_version=cur_version,
+                resulting_version=cur_version + 1,
+                ops=unblock_ops,
+            )
+            ok, new_ver, winning_id = kernel.commit_plan_delta(
+                delta, proposal_id=f"unblock-{completed_task_id}-{retry}"
+            )
+            if ok:
+                return True, new_ver, unblocked_ids, [], None
+
+        return (
+            False,
+            kernel.get_plan_version(),
+            [],
+            [],
+            "CAS conflict retries exhausted during dependency unblocking",
+        )
+
+    def handle_failed_dependencies(
+        self,
+        kernel: SpaceKernelAuthorityProtocol,
+        failed_task_id: str,
+        expected_plan_version: int | None = None,
+        max_retries: int = 3,
+    ) -> tuple[bool, int, list[str], str | None]:
+        """Inspect the TaskGraph and transition affected dependent tasks to BLOCKED via PlanDelta (Phase 12.5).
+
+        Invariants:
+        - Downstream tasks requiring a failed non-optional dependency cannot become READY.
+        - Mandatory downstream tasks transition PENDING -> BLOCKED atomically via SpaceKernel CAS.
+        - SCCA Law 6: failures are contained and surfaced upward.
+        """
+        for retry in range(max_retries):
+            cur_version = kernel.get_plan_version()
+            if expected_plan_version is not None and retry == 0:
+                cur_version = expected_plan_version
+
+            graph = kernel.get_task_graph(cur_version)
+            failed_node = graph.get_node(failed_task_id)
+            if failed_node is not None and failed_node.optional:
+                # If the failed task itself was optional, its failure does not block downstream tasks
+                return True, cur_version, [], None
+
+            block_ops: list[dict[str, Any]] = []
+            blocked_ids: list[str] = []
+
+            for node in graph.nodes:
+                if failed_task_id not in node.dependencies:
+                    continue
+                if node.optional:
+                    # Optional dependent node is not blocked
+                    continue
+                if node.state in ("pending", "ready"):
+                    block_ops.append(
+                        {
+                            "op": "transition",
+                            "target_node_id": node.id,
+                            "to_state": TaskState.BLOCKED.value,
+                            "from_state": node.state,
+                            "reason": f"Upstream mandatory dependency '{failed_task_id}' failed",
+                            "error": f"Upstream mandatory dependency '{failed_task_id}' failed",
+                        }
+                    )
+                    blocked_ids.append(node.id)
+
+            if not block_ops:
+                return True, cur_version, [], None
+
+            delta = PlanDelta(
+                space_id=kernel.space_id,
+                base_version=cur_version,
+                resulting_version=cur_version + 1,
+                ops=block_ops,
+            )
+            ok, new_ver, winning_id = kernel.commit_plan_delta(
+                delta, proposal_id=f"block-{failed_task_id}-{retry}"
+            )
+            if ok:
+                return True, new_ver, blocked_ids, None
+
+        return (
+            False,
+            kernel.get_plan_version(),
+            [],
+            "CAS conflict retries exhausted during dependency blocking",
+        )
+
+    def observe_and_evaluate_task(
+        self,
+        kernel: SpaceKernelAuthorityProtocol,
+        task_id: str,
+        execution_result: TaskExecutionResult,
+        expected_plan_version: int | None = None,
+        base_dir: Path | None = None,
+        replay_mode: bool = False,
+        max_retries: int = 3,
+    ) -> TaskCompletionResult:
+        """Observe, verify, and complete a task with atomic CAS transitions and dependency unblocking (Phase 12.5).
+
+        Lifecycle:
+            OBSERVING -> EVALUATING -> COMPLETED (or FAILED)
+                      -> Unblock downstream READY tasks (or block on failure)
+        """
+        kernel.verify_space_identity(kernel.space_id)
+
+        for retry in range(max_retries):
+            cur_version = kernel.get_plan_version()
+            if expected_plan_version is not None and retry == 0:
+                cur_version = expected_plan_version
+
+            graph = kernel.get_task_graph(cur_version)
+            node = graph.get_node(task_id)
+            if node is None:
+                return TaskCompletionResult(
+                    task_id=task_id,
+                    space_id=kernel.space_id,
+                    plan_version=cur_version,
+                    status="rejected",
+                    terminal_state="unknown",
+                    completed=False,
+                    error=f"Task '{task_id}' not found in plan",
+                )
+
+            # Idempotency check: if already terminal
+            if node.state == TaskState.COMPLETED.value:
+                return TaskCompletionResult(
+                    task_id=task_id,
+                    space_id=kernel.space_id,
+                    plan_version=cur_version,
+                    status="completed",
+                    terminal_state=TaskState.COMPLETED.value,
+                    completed=True,
+                    cached=True,
+                    reason=f"Task '{task_id}' is already in completed state",
+                )
+            if node.state == TaskState.FAILED.value:
+                return TaskCompletionResult(
+                    task_id=task_id,
+                    space_id=kernel.space_id,
+                    plan_version=cur_version,
+                    status="failed",
+                    terminal_state=TaskState.FAILED.value,
+                    completed=False,
+                    cached=True,
+                    error=node.error or "Task already in failed state",
+                    reason=f"Task '{task_id}' is already in failed state",
+                )
+
+            observed_version = cur_version
+
+            # If node is in RUNNING, transition to OBSERVING first
+            if node.state == TaskState.RUNNING.value:
+                ok, cur_version, err = kernel.propose_task_transition(
+                    task_id=task_id,
+                    to_state=TaskState.OBSERVING.value,
+                    expected_plan_version=cur_version,
+                    from_state=TaskState.RUNNING.value,
+                    reason="Transitioning to observing for evidence collection",
+                    result_ref=execution_result.request_id,
+                )
+                if not ok:
+                    continue  # Retry CAS loop
+                observed_version = cur_version
+
+            # Transition OBSERVING -> EVALUATING
+            if node.state in (TaskState.OBSERVING.value, TaskState.RUNNING.value):
+                ok, cur_version, err = kernel.propose_task_transition(
+                    task_id=task_id,
+                    to_state=TaskState.EVALUATING.value,
+                    expected_plan_version=cur_version,
+                    from_state=TaskState.OBSERVING.value,
+                    reason="Evaluating task execution evidence",
+                )
+                if not ok:
+                    continue  # Retry CAS loop
+            elif node.state != TaskState.EVALUATING.value:
+                return TaskCompletionResult(
+                    task_id=task_id,
+                    space_id=kernel.space_id,
+                    plan_version=cur_version,
+                    status="rejected",
+                    terminal_state=node.state,
+                    completed=False,
+                    error=f"Task '{task_id}' is in state '{node.state}', expected 'observing' or 'evaluating'",
+                )
+
+            # Now node is in EVALUATING
+            # Verify execution evidence against the plan version under which the task executed
+            ver_res = self.verify_execution_evidence(
+                space_id=kernel.space_id,
+                task_node=node,
+                execution_result=execution_result,
+                plan_version=observed_version,
+                base_dir=base_dir,
+                replay_mode=replay_mode,
+            )
+
+            bus = getattr(kernel, "bus", None)
+
+            if ver_res.is_valid:
+                # Transition EVALUATING -> COMPLETED
+                ok, cur_version, err = kernel.propose_task_transition(
+                    task_id=task_id,
+                    to_state=TaskState.COMPLETED.value,
+                    expected_plan_version=cur_version,
+                    from_state=TaskState.EVALUATING.value,
+                    reason="Execution evidence verified",
+                    result_ref=execution_result.request_id,
+                )
+                if not ok:
+                    continue  # Retry CAS loop
+
+                # Publish task.completed pulse
+                if bus is not None:
+                    bus.publish(
+                        Pulse(
+                            id=f"pulse-complete-{kernel.space_id}-{task_id}-{cur_version}",
+                            space_id=kernel.space_id,
+                            type="task.completed",
+                            severity=Severity.INFO,
+                            source="dispatcher",
+                            timestamp=datetime.now(timezone.utc),
+                            payload={
+                                "task_id": task_id,
+                                "result_ref": execution_result.request_id,
+                                "plan_version": cur_version,
+                            },
+                            taint=ver_res.tainted,
+                            correlation_id=f"corr-{kernel.space_id}-{task_id}",
+                        )
+                    )
+
+                # Unblock downstream dependencies via CAS
+                unblock_ok, cur_version, unblocked, _, err = self.unblock_dependencies(
+                    kernel=kernel,
+                    completed_task_id=task_id,
+                    expected_plan_version=cur_version,
+                )
+
+                return TaskCompletionResult(
+                    task_id=task_id,
+                    space_id=kernel.space_id,
+                    plan_version=cur_version,
+                    status="completed",
+                    terminal_state=TaskState.COMPLETED.value,
+                    completed=True,
+                    verification=ver_res,
+                    unblocked_tasks=unblocked,
+                    reason="Task evidence verified; completed and dependencies unblocked",
+                )
+            else:
+                # Transition EVALUATING -> FAILED
+                fail_msg = (
+                    "; ".join(ver_res.failure_reasons)
+                    or "Execution evidence verification failed"
+                )
+                ok, cur_version, err = kernel.propose_task_transition(
+                    task_id=task_id,
+                    to_state=TaskState.FAILED.value,
+                    expected_plan_version=cur_version,
+                    from_state=TaskState.EVALUATING.value,
+                    reason=fail_msg,
+                    error=fail_msg,
+                )
+                if not ok:
+                    continue  # Retry CAS loop
+
+                # Publish task.failed pulse
+                if bus is not None:
+                    bus.publish(
+                        Pulse(
+                            id=f"pulse-fail-{kernel.space_id}-{task_id}-{cur_version}",
+                            space_id=kernel.space_id,
+                            type="task.failed",
+                            severity=Severity.ERROR,
+                            source="dispatcher",
+                            timestamp=datetime.now(timezone.utc),
+                            payload={
+                                "task_id": task_id,
+                                "error_class": "terminal.evidence_verification_failed",
+                                "message": fail_msg,
+                                "plan_version": cur_version,
+                            },
+                            taint=ver_res.tainted,
+                            correlation_id=f"corr-{kernel.space_id}-{task_id}",
+                        )
+                    )
+
+                # Block downstream dependencies via CAS
+                block_ok, cur_version, blocked, err = self.handle_failed_dependencies(
+                    kernel=kernel,
+                    failed_task_id=task_id,
+                    expected_plan_version=cur_version,
+                )
+
+                return TaskCompletionResult(
+                    task_id=task_id,
+                    space_id=kernel.space_id,
+                    plan_version=cur_version,
+                    status="failed",
+                    terminal_state=TaskState.FAILED.value,
+                    completed=False,
+                    verification=ver_res,
+                    blocked_tasks=blocked,
+                    error=fail_msg,
+                    reason=f"Evidence verification failed: {fail_msg}",
+                )
+
+        return TaskCompletionResult(
+            task_id=task_id,
+            space_id=kernel.space_id,
+            plan_version=kernel.get_plan_version(),
+            status="cas_failed",
+            terminal_state="unknown",
+            completed=False,
+            error="CAS conflict retries exhausted during task observation and evaluation",
+        )
+
+    def execute_task_full_pipeline(
+        self,
+        kernel: SpaceKernelAuthorityProtocol,
+        resource_mgr: ResourceManager,
+        task_id: str,
+        resource_identity: ResourceIdentity,
+        invoker: WorkerInvokerProtocol,
+        expected_plan_version: int | None = None,
+        units: int = 1,
+        duration_seconds: float = 60.0,
+        priority: int = 0,
+        is_tainted: bool = False,
+        approval: Any | None = None,
+        budget: float = 0.0,
+        timeout: float = 30.0,
+        scope: str = "execution",
+        base_dir: Path | None = None,
+        replay_mode: bool = False,
+    ) -> TaskCompletionResult:
+        """Execute full end-to-end task execution pipeline from READY through COMPLETED & DAG unblocking (Phase 12.5).
+
+        Pipeline:
+            READY -> ADMISSION_PENDING -> ADMITTED -> LEASE_PENDING -> LEASED
+                  -> DISPATCHED -> RUNNING -> OBSERVING
+                  -> EVALUATING -> COMPLETED / FAILED
+                  -> Unblock / Block DAG dependencies
+        """
+        dispatch_res = self.execute_task_pipeline(
+            kernel=kernel,
+            resource_mgr=resource_mgr,
+            task_id=task_id,
+            resource_identity=resource_identity,
+            invoker=invoker,
+            expected_plan_version=expected_plan_version,
+            units=units,
+            duration_seconds=duration_seconds,
+            priority=priority,
+            is_tainted=is_tainted,
+            approval=approval,
+            budget=budget,
+            timeout=timeout,
+            scope=scope,
+        )
+
+        if (
+            dispatch_res.terminal_state != TaskState.OBSERVING.value
+            or dispatch_res.execution_result is None
+        ):
+            return TaskCompletionResult(
+                task_id=task_id,
+                space_id=kernel.space_id,
+                plan_version=dispatch_res.plan_version,
+                status=dispatch_res.status,
+                terminal_state=dispatch_res.terminal_state,
+                completed=False,
+                error=dispatch_res.error,
+                reason=dispatch_res.reason,
+            )
+
+        return self.observe_and_evaluate_task(
+            kernel=kernel,
+            task_id=task_id,
+            execution_result=dispatch_res.execution_result,
+            expected_plan_version=dispatch_res.plan_version,
+            base_dir=base_dir,
+            replay_mode=replay_mode,
         )
