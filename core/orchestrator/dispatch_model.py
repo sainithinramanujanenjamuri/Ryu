@@ -12,11 +12,17 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Protocol
 
+from core.capabilities.admission import CapabilityRequest, CapabilityResponse
 from core.plans.delta import PlanDelta
 from core.plans.task_graph import (
     TaskGraph,
     TaskNode,
+    TaskNotFoundError,
+    TaskState,
 )
+from core.resources.identity import ResourceIdentity
+from core.resources.lease import Lease
+from core.resources.manager import ResourceAcquisitionResult, ResourceManager
 
 
 class CrossSpaceViolationError(Exception):
@@ -133,6 +139,43 @@ class SpaceKernelAuthorityProtocol(Protocol):
     def commit_plan_delta(
         self, delta: PlanDelta, proposal_id: str | None = None
     ) -> tuple[bool, int, str | None]: ...
+
+    def propose_task_transition(
+        self,
+        task_id: str,
+        to_state: str,
+        expected_plan_version: int,
+        from_state: str | None = None,
+        reason: str = "",
+        error: str | None = None,
+        result_ref: str | None = None,
+        proposal_id: str | None = None,
+    ) -> tuple[bool, int, str | None]: ...
+
+    def request_capability(
+        self,
+        request: CapabilityRequest,
+        is_tainted: bool = False,
+        approval: Any | None = None,
+    ) -> CapabilityResponse: ...
+
+
+@dataclass(frozen=True)
+class TaskPipelineResult:
+    """Outcome of coordinating pre-dispatch admission and resource leasing (Phase 12.3)."""
+
+    task_id: str
+    space_id: str
+    plan_version: int
+    admitted: bool
+    leased: bool
+    terminal_state: str
+    capability_response: CapabilityResponse | None = None
+    lease: Lease | None = None
+    lease_token: str | None = None
+    queue_position: int | None = None
+    error: str | None = None
+    reason: str = ""
 
 
 class DeterministicDispatcher:
@@ -395,3 +438,462 @@ class DeterministicDispatcher:
                 return True, rebased_ver
 
         return False, kernel.get_plan_version()
+
+    def request_task_admission(
+        self,
+        kernel: SpaceKernelAuthorityProtocol,
+        task_id: str,
+        expected_plan_version: int | None = None,
+        is_tainted: bool = False,
+        approval: Any | None = None,
+        budget: float = 0.0,
+        timeout: float = 30.0,
+    ) -> tuple[bool, CapabilityResponse, int]:
+        """Request capability admission for a task through SpaceKernel AdmissionController (Phase 12.3).
+
+        SCCA Lifecycle Transitions:
+            - If task in PENDING (with all dependencies completed): PENDING -> READY via CAS
+            - If task in READY: READY -> ADMISSION_PENDING via CAS
+            - If task in BLOCKED (with approval/policy resolution): BLOCKED -> ADMISSION_PENDING via CAS
+            - If task already ADMITTED: returns admitted=True immediately
+            - Evaluates kernel.request_capability()
+            - If admitted: ADMISSION_PENDING -> ADMITTED via CAS
+            - If denied: ADMISSION_PENDING -> BLOCKED via CAS
+
+        Returns:
+            (admitted: bool, response: CapabilityResponse, resulting_plan_version: int)
+        """
+        graph = kernel.get_task_graph()
+        node = graph.get_node(task_id)
+        if node is None:
+            raise TaskNotFoundError(
+                f"Task '{task_id}' not found in space '{kernel.space_id}'"
+            )
+
+        cur_version = kernel.get_plan_version()
+        if expected_plan_version is not None and cur_version != expected_plan_version:
+            return (
+                False,
+                CapabilityResponse(
+                    status="denied",
+                    error="plan_version_mismatch",
+                    cost=0.0,
+                ),
+                cur_version,
+            )
+
+        norm_state = node.state.lower()
+        if norm_state == TaskState.ADMITTED.value:
+            return (
+                True,
+                CapabilityResponse(status="ok", result={"already_admitted": True}),
+                cur_version,
+            )
+
+        # Handle PENDING state: check dependencies then transition to READY
+        if norm_state == TaskState.PENDING.value:
+            for dep_id in node.dependencies:
+                dep_node = graph.get_node(dep_id)
+                if dep_node is None or dep_node.state.lower() != TaskState.COMPLETED.value:
+                    return (
+                        False,
+                        CapabilityResponse(
+                            status="denied",
+                            error=f"unresolved_dependency: {dep_id}",
+                            cost=0.0,
+                        ),
+                        cur_version,
+                    )
+            ok, new_ver, err = kernel.propose_task_transition(
+                task_id=task_id,
+                to_state=TaskState.READY.value,
+                expected_plan_version=cur_version,
+                from_state=TaskState.PENDING.value,
+                reason="Dependencies satisfied; marking task ready",
+            )
+            if not ok:
+                return (
+                    False,
+                    CapabilityResponse(status="denied", error=f"cas_failed: {err}"),
+                    new_ver,
+                )
+            cur_version = new_ver
+            norm_state = TaskState.READY.value
+
+        # Handle READY state: transition to ADMISSION_PENDING
+        if norm_state == TaskState.READY.value:
+            ok, new_ver, err = kernel.propose_task_transition(
+                task_id=task_id,
+                to_state=TaskState.ADMISSION_PENDING.value,
+                expected_plan_version=cur_version,
+                from_state=TaskState.READY.value,
+                reason="Requesting capability admission",
+            )
+            if not ok:
+                return (
+                    False,
+                    CapabilityResponse(
+                        status="denied",
+                        error=f"cas_failed: {err}",
+                        cost=0.0,
+                    ),
+                    new_ver,
+                )
+            cur_version = new_ver
+            norm_state = TaskState.ADMISSION_PENDING.value
+
+        # Handle BLOCKED state: transition to ADMISSION_PENDING if re-evaluating
+        elif norm_state == TaskState.BLOCKED.value:
+            ok, new_ver, err = kernel.propose_task_transition(
+                task_id=task_id,
+                to_state=TaskState.ADMISSION_PENDING.value,
+                expected_plan_version=cur_version,
+                from_state=TaskState.BLOCKED.value,
+                reason="Re-evaluating blocked task for admission",
+            )
+            if not ok:
+                return (
+                    False,
+                    CapabilityResponse(
+                        status="denied",
+                        error=f"cas_failed: {err}",
+                        cost=0.0,
+                    ),
+                    new_ver,
+                )
+            cur_version = new_ver
+            norm_state = TaskState.ADMISSION_PENDING.value
+
+        elif norm_state != TaskState.ADMISSION_PENDING.value:
+            return (
+                False,
+                CapabilityResponse(
+                    status="denied",
+                    error=f"invalid_task_state_for_admission: {node.state}",
+                    cost=0.0,
+                ),
+                cur_version,
+            )
+
+        # Build formal CapabilityRequest matching contracts
+        idempotency_key = compute_dispatch_idempotency_key(
+            space_id=kernel.space_id,
+            plan_version=cur_version,
+            task_id=task_id,
+            attempt=node.attempt,
+        )
+        req = CapabilityRequest(
+            requester_id=task_id,
+            space_id=kernel.space_id,
+            capability=node.capability,
+            params=dict(node.params),
+            timeout=timeout,
+            budget=budget,
+            idempotency_key=idempotency_key,
+        )
+
+        # Authoritative kernel admission evaluation
+        response = kernel.request_capability(
+            request=req,
+            is_tainted=is_tainted,
+            approval=approval,
+        )
+
+        if response.status == "ok":
+            ok, new_ver, err = kernel.propose_task_transition(
+                task_id=task_id,
+                to_state=TaskState.ADMITTED.value,
+                expected_plan_version=cur_version,
+                from_state=TaskState.ADMISSION_PENDING.value,
+                reason="Capability admitted by kernel AdmissionController",
+            )
+            if not ok:
+                return (
+                    False,
+                    CapabilityResponse(
+                        status="denied",
+                        error=f"cas_failed: {err}",
+                        cost=0.0,
+                    ),
+                    new_ver,
+                )
+            return True, response, new_ver
+
+        # Admission denied: transition to BLOCKED via CAS
+        err_msg = response.error or "admission_denied"
+        ok, new_ver, _ = kernel.propose_task_transition(
+            task_id=task_id,
+            to_state=TaskState.BLOCKED.value,
+            expected_plan_version=cur_version,
+            from_state=TaskState.ADMISSION_PENDING.value,
+            reason=f"Admission denied: {err_msg}",
+            error=err_msg,
+        )
+        return False, response, new_ver
+
+    def acquire_task_lease(
+        self,
+        kernel: SpaceKernelAuthorityProtocol,
+        resource_mgr: ResourceManager,
+        task_id: str,
+        identity: ResourceIdentity,
+        expected_plan_version: int | None = None,
+        units: int = 1,
+        duration_seconds: float = 60.0,
+        priority: int = 0,
+        scope: str = "execution",
+    ) -> tuple[bool, ResourceAcquisitionResult, int]:
+        """Request resource lease allocation for an admitted task through ResourceManager (Phase 12.3).
+
+        SCCA Lifecycle Transitions:
+            - If task in ADMITTED: ADMITTED -> LEASE_PENDING via CAS
+            - If task already LEASED: returns leased=True immediately
+            - Evaluates resource_mgr.acquire()
+            - If granted: LEASE_PENDING -> LEASED via CAS (with rollback on CAS failure)
+            - If contested (queued): remains in LEASE_PENDING
+            - If denied: LEASE_PENDING -> FAILED via CAS
+
+        Returns:
+            (leased: bool, acquisition: ResourceAcquisitionResult, resulting_plan_version: int)
+        """
+        graph = kernel.get_task_graph()
+        node = graph.get_node(task_id)
+        if node is None:
+            raise TaskNotFoundError(
+                f"Task '{task_id}' not found in space '{kernel.space_id}'"
+            )
+
+        cur_version = kernel.get_plan_version()
+        if expected_plan_version is not None and cur_version != expected_plan_version:
+            return (
+                False,
+                ResourceAcquisitionResult(
+                    granted=False,
+                    reason=f"plan_version_mismatch: expected {expected_plan_version}, current {cur_version}",
+                ),
+                cur_version,
+            )
+
+        norm_state = node.state.lower()
+        if norm_state == TaskState.LEASED.value:
+            return True, ResourceAcquisitionResult(granted=True, cached=True), cur_version
+
+        if norm_state == TaskState.ADMITTED.value:
+            ok, new_ver, err = kernel.propose_task_transition(
+                task_id=task_id,
+                to_state=TaskState.LEASE_PENDING.value,
+                expected_plan_version=cur_version,
+                from_state=TaskState.ADMITTED.value,
+                reason="Requesting resource lease allocation",
+            )
+            if not ok:
+                return (
+                    False,
+                    ResourceAcquisitionResult(granted=False, reason=f"cas_failed: {err}"),
+                    new_ver,
+                )
+            cur_version = new_ver
+        elif norm_state != TaskState.LEASE_PENDING.value:
+            return (
+                False,
+                ResourceAcquisitionResult(
+                    granted=False,
+                    reason=f"invalid_task_state_for_lease: {node.state}",
+                ),
+                cur_version,
+            )
+
+        # Idempotency token computation (ADR-0006)
+        idempotency_key = compute_dispatch_idempotency_key(
+            space_id=kernel.space_id,
+            plan_version=cur_version,
+            task_id=task_id,
+            attempt=node.attempt,
+        )
+
+        acq = resource_mgr.acquire(
+            space_id=kernel.space_id,
+            requester_id=task_id,
+            identity=identity,
+            units=units,
+            duration_seconds=duration_seconds,
+            priority=priority,
+            idempotency_key=idempotency_key,
+            scope=scope,
+        )
+
+        if acq.granted and acq.lease is not None:
+            # Transition to LEASED via CAS
+            ok, new_ver, err = kernel.propose_task_transition(
+                task_id=task_id,
+                to_state=TaskState.LEASED.value,
+                expected_plan_version=cur_version,
+                from_state=TaskState.LEASE_PENDING.value,
+                reason=f"Resource lease granted: {acq.lease.lease_token}",
+                result_ref=acq.lease.lease_token,
+            )
+            if not ok:
+                # ROLLBACK PROTECTION:
+                # If plan CAS fails due to concurrent plan update or version mismatch,
+                # immediately release acquired lease to prevent hardware resource leaks.
+                try:
+                    resource_mgr.release(
+                        space_id=kernel.space_id,
+                        requester_id=task_id,
+                        lease_token=acq.lease.lease_token,
+                    )
+                except Exception:
+                    pass
+                return (
+                    False,
+                    ResourceAcquisitionResult(
+                        granted=False,
+                        reason=f"cas_failed_on_leased_transition: {err} (lease released)",
+                    ),
+                    new_ver,
+                )
+            return True, acq, new_ver
+
+        if not acq.granted:
+            if acq.queue_position is not None:
+                # Contested: task stays in LEASE_PENDING waiting for capacity
+                return False, acq, cur_version
+
+            # Resource acquisition denied (e.g. overcapacity, unregistered resource)
+            reason_str = acq.reason or "resource_acquisition_denied"
+            ok, new_ver, _ = kernel.propose_task_transition(
+                task_id=task_id,
+                to_state=TaskState.FAILED.value,
+                expected_plan_version=cur_version,
+                from_state=TaskState.LEASE_PENDING.value,
+                reason=f"Resource acquisition failed: {reason_str}",
+                error=reason_str,
+            )
+            return False, acq, new_ver
+
+        return False, acq, cur_version
+
+    def release_task_lease(
+        self,
+        kernel: SpaceKernelAuthorityProtocol,
+        resource_mgr: ResourceManager,
+        task_id: str,
+        lease_token: str,
+    ) -> bool:
+        """Release a held lease explicitly through ResourceManager."""
+        return resource_mgr.release(
+            space_id=kernel.space_id,
+            requester_id=task_id,
+            lease_token=lease_token,
+        )
+
+    def coordinate_admission_and_lease(
+        self,
+        kernel: SpaceKernelAuthorityProtocol,
+        resource_mgr: ResourceManager,
+        task_id: str,
+        resource_identity: ResourceIdentity,
+        expected_plan_version: int | None = None,
+        units: int = 1,
+        duration_seconds: float = 60.0,
+        priority: int = 0,
+        is_tainted: bool = False,
+        approval: Any | None = None,
+        budget: float = 0.0,
+        timeout: float = 30.0,
+        scope: str = "execution",
+    ) -> TaskPipelineResult:
+        """Execute the coordinated Admission Control + Fractional Lease pipeline (Phase 12.3).
+
+        SCCA Execution Sequence:
+            READY -> ADMISSION_PENDING -> ADMITTED -> LEASE_PENDING -> LEASED
+
+        TERMINAL GUARANTEES:
+            - If admission fails: terminal state is BLOCKED or FAILED. Leases = 0.
+            - If resource contested: terminal state is LEASE_PENDING.
+            - If lease denied: terminal state is FAILED.
+            - If lease granted and CAS succeeds: terminal state is LEASED.
+            - Under NO circumstance does this method invoke workers, tools, or sandboxes.
+        """
+        # Step 1: Admission Control
+        admitted, adm_resp, pver = self.request_task_admission(
+            kernel=kernel,
+            task_id=task_id,
+            expected_plan_version=expected_plan_version,
+            is_tainted=is_tainted,
+            approval=approval,
+            budget=budget,
+            timeout=timeout,
+        )
+
+        if not admitted:
+            graph = kernel.get_task_graph()
+            node = graph.get_node(task_id)
+            term_state = node.state if node else TaskState.BLOCKED.value
+            return TaskPipelineResult(
+                task_id=task_id,
+                space_id=kernel.space_id,
+                plan_version=pver,
+                admitted=False,
+                leased=False,
+                terminal_state=term_state,
+                capability_response=adm_resp,
+                error=adm_resp.error,
+                reason=f"Admission denied: {adm_resp.error}",
+            )
+
+        # Step 2: Resource Lease Acquisition
+        leased, acq_res, pver2 = self.acquire_task_lease(
+            kernel=kernel,
+            resource_mgr=resource_mgr,
+            task_id=task_id,
+            identity=resource_identity,
+            expected_plan_version=pver,
+            units=units,
+            duration_seconds=duration_seconds,
+            priority=priority,
+            scope=scope,
+        )
+
+        if leased and acq_res.lease is not None:
+            return TaskPipelineResult(
+                task_id=task_id,
+                space_id=kernel.space_id,
+                plan_version=pver2,
+                admitted=True,
+                leased=True,
+                terminal_state=TaskState.LEASED.value,
+                capability_response=adm_resp,
+                lease=acq_res.lease,
+                lease_token=acq_res.lease.lease_token,
+                reason="Task admitted and resource lease granted",
+            )
+
+        if acq_res.queue_position is not None:
+            return TaskPipelineResult(
+                task_id=task_id,
+                space_id=kernel.space_id,
+                plan_version=pver2,
+                admitted=True,
+                leased=False,
+                terminal_state=TaskState.LEASE_PENDING.value,
+                capability_response=adm_resp,
+                queue_position=acq_res.queue_position,
+                reason=f"Resource contested; queued at position {acq_res.queue_position}",
+            )
+
+        # Resource denied or lease acquisition failed
+        graph = kernel.get_task_graph()
+        node = graph.get_node(task_id)
+        term_state = node.state if node else TaskState.FAILED.value
+        return TaskPipelineResult(
+            task_id=task_id,
+            space_id=kernel.space_id,
+            plan_version=pver2,
+            admitted=True,
+            leased=False,
+            terminal_state=term_state,
+            capability_response=adm_resp,
+            error=acq_res.reason,
+            reason=f"Resource acquisition failed: {acq_res.reason}",
+        )

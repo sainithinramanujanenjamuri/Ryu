@@ -152,6 +152,7 @@ class PlanStore:
                                 params=dict(op_payload.get("params", {})),
                                 optional=op_payload.get("optional", False),
                                 dependencies=list(op_payload.get("dependencies", [])),
+                                state=op_payload.get("state", "pending"),
                             )
                             new_graph.nodes.append(new_node)
                     elif op_type == "remove":

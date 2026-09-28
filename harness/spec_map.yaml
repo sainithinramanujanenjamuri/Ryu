@@ -1537,7 +1537,8 @@ spec_map:
     evidence_state: "GATE_VERIFIED"
 
   # -----------------------------------------------------------------------
-  # Phase 12.1 — Dispatcher Contracts & Task Graph Model
+  # -----------------------------------------------------------------------
+  # Phase 12.1–12.3 — Dispatcher Contracts, CAS Integration & Lease Pipeline
   # -----------------------------------------------------------------------
 
   - id: DISPATCH-001
@@ -1549,7 +1550,7 @@ spec_map:
     contract:
       file: "core/plans/task_graph.py"
       rule: "topological sort using Kahn's algorithm and dependency validation"
-    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py, core/space/tests/test_phase12_kernel_cas.py"
+    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py, core/space/tests/test_phase12_kernel_cas.py, core/orchestrator/tests/test_phase12_admission_lease.py"
     roadmap_phase: 12
     evidence_state: "UNIT_VERIFIED"
 
@@ -1562,7 +1563,7 @@ spec_map:
     contract:
       file: "core/plans/task_graph.py"
       rule: "state machine transition matrix with 11 primary states"
-    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py, core/space/tests/test_phase12_kernel_cas.py"
+    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py, core/space/tests/test_phase12_kernel_cas.py, core/orchestrator/tests/test_phase12_admission_lease.py"
     roadmap_phase: 12
     evidence_state: "UNIT_VERIFIED"
 
@@ -1575,7 +1576,7 @@ spec_map:
     contract:
       file: "core/orchestrator/dispatch_model.py"
       rule: "compute_dispatch_idempotency_key and Dispatcher attempt tracking"
-    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py"
+    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py, core/orchestrator/tests/test_phase12_admission_lease.py"
     roadmap_phase: 12
     evidence_state: "UNIT_VERIFIED"
 
@@ -1596,12 +1597,12 @@ spec_map:
     title: "Strict Core Independence & Protocol Isolation"
     architecture_section: "AGENTS.md §7, docs/PHASE_12_EXECUTION_ENGINE_SPEC.md §2"
     acceptance_criterion: >
-      Dispatcher and graph coordinate workers via protocols (WorkerInvokerProtocol);
+      Dispatcher coordinates admission, leases, and workers via protocols;
       zero higher-layer imports in core/.
     contract:
       file: "core/orchestrator/dispatch_model.py"
       rule: "abstract protocols for execution, zero concrete worker imports"
-    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py, core/space/tests/test_phase12_kernel_cas.py"
+    harness_case: "core/orchestrator/tests/test_phase12_dispatch_contracts.py, core/space/tests/test_phase12_kernel_cas.py, core/orchestrator/tests/test_phase12_admission_lease.py"
     roadmap_phase: 12
     evidence_state: "UNIT_VERIFIED"
 
