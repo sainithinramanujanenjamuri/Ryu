@@ -9,7 +9,7 @@ Evaluates the strict Boolean AND release condition across all six v1 criteria:
 [V1-002] Core Independence Proof (Zero cognitive imports, AST + runtime blocker pass)
 [V1-003] End-to-End Vertical Slice Execution (token-hmac-v1 approval, device execution, artifact, durability)
 [V1-004] Consolidated Security Battery (All 12 security proofs pass)
-[V1-005] Governance & Documentation Hygiene (39 ADRs, 38 pulse types, 1:1 schemas, contract matrix)
+[V1-005] Governance & Documentation Hygiene (42 ADRs, 44 pulse types, 1:1 schemas, contract matrix)
 [V1-006] Deterministic Replay Equivalence Verification (Exact artifact SHA-256 byte identity + causal replay)
 
 Also evaluates:

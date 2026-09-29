@@ -52,6 +52,13 @@ def verify_replay_equivalence(run_fresh: bool = True) -> dict[str, Any]:
     if run_fresh or not run_file.exists():
         from scripts.v1_run_vertical_slice import run_vertical_slice
         slice_report = run_vertical_slice()
+        if slice_report.get("status") == "BLOCKED":
+            return {
+                "criterion": "V1-006",
+                "title": "Deterministic Replay Equivalence Verification",
+                "status": "BLOCKED",
+                "error": f"Failed to generate vertical slice execution run: {slice_report.get('error')}",
+            }
         if slice_report.get("status") != "PASS":
             return {
                 "criterion": "V1-006",

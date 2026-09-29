@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "task.interrupted_detectedPayload",
+  "description": "Payload schema for Pulse type task.interrupted_detected (ADR-0042, RECOVERY-004)",
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "space_id": {
+      "type": "string"
+    },
+    "attempt_id": {
+      "type": "string"
+    },
+    "interruption_class": {
+      "type": "string",
+      "enum": ["crash", "stale_dispatched", "ambiguous"]
+    },
+    "interrupted_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": ["task_id", "space_id", "attempt_id", "interruption_class", "interrupted_at"],
+  "additionalProperties": false
+}

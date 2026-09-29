@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "task.worker_crashPayload",
+  "description": "Payload schema for Pulse type task.worker_crash (ADR-0042, RECOVERY-004)",
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "space_id": {
+      "type": "string"
+    },
+    "attempt_id": {
+      "type": "string"
+    },
+    "plan_version": {
+      "type": "integer"
+    },
+    "recovery_action": {
+      "type": "string",
+      "enum": ["retry", "escalate", "mark_failed"]
+    }
+  },
+  "required": ["task_id", "space_id", "attempt_id", "plan_version", "recovery_action"],
+  "additionalProperties": false
+}

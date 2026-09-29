@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "PulseTypeRegistry",
-  "description": "Authoritative registry of all 38 valid Pulse types in RYU AI, organized by namespace.",
-  "version": "1.0.0",
+  "description": "Authoritative registry of all 44 valid Pulse types in RYU AI, organized by namespace.",
+  "version": "1.1.0",
   "types": [
     {
       "type": "space.created",
@@ -231,6 +231,42 @@
       "namespace": "memory",
       "default_severity": "info",
       "description": "Emitted when structured experience including counterfactual is stored."
+    },
+    {
+      "type": "recovery.started",
+      "namespace": "recovery",
+      "default_severity": "info",
+      "description": "Emitted at daemon startup when the crash recovery scan begins (ADR-0042, RECOVERY-001)."
+    },
+    {
+      "type": "recovery.scan_completed",
+      "namespace": "recovery",
+      "default_severity": "info",
+      "description": "Emitted when the recovery scan finishes, reporting the count of interrupted tasks found."
+    },
+    {
+      "type": "task.interrupted_detected",
+      "namespace": "task",
+      "default_severity": "warning",
+      "description": "Emitted for each interrupted task discovered during startup recovery scan."
+    },
+    {
+      "type": "task.worker_crash",
+      "namespace": "task",
+      "default_severity": "error",
+      "description": "Emitted when a task is classified as a worker-crash interrupted attempt during recovery."
+    },
+    {
+      "type": "lease.reconciled",
+      "namespace": "resource",
+      "default_severity": "info",
+      "description": "Emitted when a stale resource lease is successfully released during startup recovery."
+    },
+    {
+      "type": "recovery.completed",
+      "namespace": "recovery",
+      "default_severity": "info",
+      "description": "Emitted when the full startup recovery sequence completes (ADR-0042, RECOVERY-006)."
     }
   ]
 }

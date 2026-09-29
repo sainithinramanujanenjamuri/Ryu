@@ -607,6 +607,18 @@ If the architecture does not answer it, an ADR is required before implementation
 | CONV-004     | REPLAN Proposal CAS Authority                           | Only `apply_proposal()` may commit plan mutations; CONTINUE/RETRY/ESCALATE/ABORT never touch the PlanStore CAS. | `core/orchestrator/dispatch_model.py`, `core/space/kernel.py` | `core/orchestrator/tests/test_phase12_convergence_engine.py`, `workers/tests/test_phase12_end_to_end_convergence.py`, `workers/tests/test_phase12_integrated_execution.py` | Phase 12.6–12.7 | `INTEGRATION_VERIFIED` |
 | CONV-005     | Cross-Space Convergence Isolation                       | `ConvergenceEngine` for Space A rejects requests against kernel for Space B via `verify_space_identity()`. | `core/orchestrator/dispatch_model.py`, `core/space/kernel.py` | `core/orchestrator/tests/test_phase12_convergence_engine.py`, `workers/tests/test_phase12_end_to_end_convergence.py`, `workers/tests/test_phase12_integrated_execution.py` | Phase 12.6–12.7 | `INTEGRATION_VERIFIED` |
 
+# 30E. Phase 12.8 Crash Recovery & Durable Execution State Contracts
+
+| ID           | Contract                                                | Required Invariant                                                                                                     | Implementation Boundary                      | Harness / Evidence                                                               | Roadmap        | Status                 |
+| ------------ | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------- | -------------- | ---------------------- |
+| RECOVERY-001 | Execution Attempt Durability Across Restarts            | Task dispatch attempts are durably persisted to `ExecutionAttemptStore` before worker execution; idempotency survives restart; duplicate dispatch deduplicated. | `core/orchestrator/execution_state.py`, `core/orchestrator/dispatch_model.py` | `core/orchestrator/tests/test_phase12_8_crash_recovery.py` (CRASH-04, CRASH-05, CRASH-12) | Phase 12.8     | `GATE_VERIFIED`        |
+| RECOVERY-002 | Durable Retry & Replan Budgets (Anti-Amnesia)           | `ConvergenceEngine` retry and replan counters persist across process restarts via `ConvergenceStateStore`; cannot bypass budgets via restart. | `core/orchestrator/execution_state.py`, `core/orchestrator/dispatch_model.py` | `core/orchestrator/tests/test_phase12_8_crash_recovery.py` (CRASH-01, CRASH-02, CRASH-11, CRASH-13) | Phase 12.8     | `GATE_VERIFIED`        |
+| RECOVERY-003 | Durable Failure Fingerprint Registry                    | Failure fingerprints persist across restarts; repeated failures trigger `ESCALATE` rather than unbounded replan cycles. | `core/orchestrator/execution_state.py`, `core/orchestrator/dispatch_model.py` | `core/orchestrator/tests/test_phase12_8_crash_recovery.py` (CRASH-03, CRASH-13) | Phase 12.8     | `GATE_VERIFIED`        |
+| RECOVERY-004 | Interrupted Task Detection & Deterministic CAS Recovery | `StartupRecoveryEngine` scans and classifies interrupted attempts (`CRASH`, `STALE_DISPATCHED`); transitions state via standard `SpaceKernel` CAS. | `core/orchestrator/startup_recovery.py`      | `core/orchestrator/tests/test_phase12_8_crash_recovery.py` (CRASH-06, CRASH-08) | Phase 12.8     | `GATE_VERIFIED`        |
+| RECOVERY-005 | Stale Resource Lease Reconciliation                     | Stale leases held by crashed workers are released back to `ResourceManager` during startup scan; resources never permanently leaked. | `core/orchestrator/startup_recovery.py`      | `core/orchestrator/tests/test_phase12_8_crash_recovery.py` (CRASH-07) | Phase 12.8     | `GATE_VERIFIED`        |
+| RECOVERY-006 | Startup Recovery Idempotency & Observability            | Running startup recovery repeatedly produces identical outcomes; recovery lifecycle published via 6 typed recovery pulses. | `core/orchestrator/startup_recovery.py`      | `core/orchestrator/tests/test_phase12_8_crash_recovery.py` (CRASH-09, SEC-RECOVERY-03) | Phase 12.8     | `GATE_VERIFIED`        |
+| RECOVERY-007 | Ambiguity Escalation & Cross-Space Recovery Isolation   | Unclassifiable/ambiguous states escalate to human review; recovery strictly respects Space boundaries and never crosses kernels. | `core/orchestrator/startup_recovery.py`      | `core/orchestrator/tests/test_phase12_8_crash_recovery.py` (CRASH-10, CRASH-14, SEC-RECOVERY-01, SEC-RECOVERY-02) | Phase 12.8     | `GATE_VERIFIED`        |
+
 ---
 
 # 31. Governing Principle
@@ -617,7 +629,7 @@ The matrix is a verification map, not a second architecture.
 
 ---
 
-**Document status:** `ACTIVE — v1.0.0 RELEASE BASELINE | Phase 12.7 INTEGRATION_VERIFIED`
+**Document status:** `ACTIVE — v1.0.0 RELEASE BASELINE | Phase 12.8 GATE_VERIFIED`
 
 **Master Verification:** `GATE: PASS (V1-001 through V1-006)`
 

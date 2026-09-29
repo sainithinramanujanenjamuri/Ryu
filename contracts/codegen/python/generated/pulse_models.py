@@ -45,6 +45,12 @@ class PulseType(str, Enum):
     KNOWLEDGE_PROMOTION_REJECTED = "knowledge.promotion.rejected"
     MEMORY_UPDATED = "memory.updated"
     EXPERIENCE_STORED = "experience.stored"
+    RECOVERY_STARTED = "recovery.started"
+    RECOVERY_SCAN_COMPLETED = "recovery.scan_completed"
+    TASK_INTERRUPTED_DETECTED = "task.interrupted_detected"
+    TASK_WORKER_CRASH = "task.worker_crash"
+    LEASE_RECONCILED = "lease.reconciled"
+    RECOVERY_COMPLETED = "recovery.completed"
 
 ALL_PULSE_TYPES: Final[set[str]] = {
     "space.created",
@@ -85,6 +91,12 @@ ALL_PULSE_TYPES: Final[set[str]] = {
     "knowledge.promotion.rejected",
     "memory.updated",
     "experience.stored",
+    "recovery.started",
+    "recovery.scan_completed",
+    "task.interrupted_detected",
+    "task.worker_crash",
+    "lease.reconciled",
+    "recovery.completed",
 }
 
 PULSE_DEFAULT_SEVERITIES: Final[dict[str, str]] = {
@@ -126,4 +138,10 @@ PULSE_DEFAULT_SEVERITIES: Final[dict[str, str]] = {
     "knowledge.promotion.rejected": "warning",
     "memory.updated": "info",
     "experience.stored": "info",
+    "recovery.started": "info",
+    "recovery.scan_completed": "info",
+    "task.interrupted_detected": "warning",
+    "task.worker_crash": "error",
+    "lease.reconciled": "info",
+    "recovery.completed": "info",
 }

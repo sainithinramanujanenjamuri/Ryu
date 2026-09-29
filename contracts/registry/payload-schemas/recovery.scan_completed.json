@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "recovery.scan_completedPayload",
+  "description": "Payload schema for Pulse type recovery.scan_completed (ADR-0042, RECOVERY-004)",
+  "type": "object",
+  "properties": {
+    "daemon_instance_id": {
+      "type": "string"
+    },
+    "interrupted_tasks_found": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "stale_leases_found": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "scan_duration_seconds": {
+      "type": "number",
+      "minimum": 0
+    }
+  },
+  "required": ["daemon_instance_id", "interrupted_tasks_found", "stale_leases_found", "scan_duration_seconds"],
+  "additionalProperties": false
+}

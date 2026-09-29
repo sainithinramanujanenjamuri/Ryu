@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "recovery.startedPayload",
+  "description": "Payload schema for Pulse type recovery.started (ADR-0042, RECOVERY-001)",
+  "type": "object",
+  "properties": {
+    "daemon_instance_id": {
+      "type": "string",
+      "description": "Unique identifier for the current daemon process instance."
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": ["daemon_instance_id", "started_at"],
+  "additionalProperties": false
+}

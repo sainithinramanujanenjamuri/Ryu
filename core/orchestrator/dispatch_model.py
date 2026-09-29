@@ -11,7 +11,14 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    from core.orchestrator.execution_state import ExecutionAttemptStore as ExecutionAttemptStoreType
+    from core.orchestrator.execution_state import ConvergenceStateStore as ConvergenceStateStoreType
+else:
+    ExecutionAttemptStoreType = Any
+    ConvergenceStateStoreType = Any
 
 from ryu.pulse_bus.pulse import Pulse, Severity
 
@@ -325,8 +332,38 @@ class DeterministicDispatcher:
     - Bounded & Deterministic: Kahn's DAG traversal, cycle rejection, tie-breaking by task ID.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        attempt_store: "ExecutionAttemptStoreType | None" = None,
+    ) -> None:
         self._tracked_attempts: dict[str, DispatchAttempt] = {}
+        self._attempt_store = attempt_store
+        # Pre-populate in-memory cache from durable store if provided
+        if self._attempt_store is not None:
+            self._preload_tracked_attempts()
+
+    def _preload_tracked_attempts(self) -> None:
+        """Pre-populate _tracked_attempts from durable store at startup (RECOVERY-001).
+
+        Restores idempotency protection across process restarts. Only loads
+        records that are not yet 'recovered' or 'failed' (still relevant).
+        """
+        # Import here to avoid circular imports; store is protocol-typed
+        try:
+            from core.orchestrator.execution_state import ExecutionAttemptRecord
+            interrupted = self._attempt_store.get_interrupted_attempts(crash_detection_window_seconds=0.0)  # type: ignore[union-attr]
+            for record in interrupted:
+                attempt = DispatchAttempt(
+                    idempotency_key=record.idempotency_key,
+                    space_id=record.space_id,
+                    plan_version=record.plan_version,
+                    task_id=record.task_id,
+                    attempt=record.attempt_number,
+                    status=record.status,
+                )
+                self._tracked_attempts[record.idempotency_key] = attempt
+        except Exception:
+            pass  # Degrade gracefully if store unavailable at startup
 
     def evaluate_plan(self, task_graph: TaskGraph, space_id: str) -> list[DispatchDecision]:
         """Evaluate the entire TaskGraph and return decisions for every task in deterministic order.
@@ -364,13 +401,64 @@ class DeterministicDispatcher:
     def record_attempt(self, attempt: DispatchAttempt) -> bool:
         """Record an in-flight dispatch attempt for idempotency deduplication.
 
+        Also persists to the durable ExecutionAttemptStore if one was provided
+        at construction time, ensuring idempotency protection survives restart (RECOVERY-001).
+
         Returns:
             True if recorded (first time seen), False if duplicate attempt already exists.
         """
         if attempt.idempotency_key in self._tracked_attempts:
             return False
         self._tracked_attempts[attempt.idempotency_key] = attempt
+        # Persist durably if store available
+        if self._attempt_store is not None:
+            try:
+                from core.orchestrator.execution_state import ExecutionAttemptRecord
+                record = ExecutionAttemptRecord(
+                    attempt_id=attempt.idempotency_key,
+                    idempotency_key=attempt.idempotency_key,
+                    space_id=attempt.space_id,
+                    task_id=attempt.task_id,
+                    plan_version=attempt.plan_version,
+                    attempt_number=attempt.attempt,
+                    capability="",  # filled by caller if needed
+                    status=attempt.status,
+                    started_at=attempt.created_at,
+                )
+                self._attempt_store.save_attempt(record)
+            except Exception:
+                pass  # Store failure must not block dispatch (Law 6 — log externally)
         return True
+
+    def update_attempt_status(
+        self,
+        idempotency_key: str,
+        status: str,
+        *,
+        failure_class: str | None = None,
+        failure_message: str | None = None,
+        exit_code: int | None = None,
+        artifact_sha256: str | None = None,
+    ) -> None:
+        """Update the status of a tracked attempt in both memory and durable store (RECOVERY-001)."""
+        if idempotency_key in self._tracked_attempts:
+            old = self._tracked_attempts[idempotency_key]
+            from dataclasses import replace as dc_replace
+            self._tracked_attempts[idempotency_key] = dc_replace(old, status=status)
+        if self._attempt_store is not None:
+            try:
+                now = datetime.now(timezone.utc)
+                self._attempt_store.update_attempt_status(
+                    idempotency_key,
+                    status,
+                    completed_at=now if status in ("completed", "failed", "recovered") else None,
+                    failure_class=failure_class,
+                    failure_message=failure_message,
+                    exit_code=exit_code,
+                    artifact_sha256=artifact_sha256,
+                )
+            except Exception:
+                pass  # Store failure must not block execution (Law 6 — log externally)
 
     def is_attempt_tracked(self, idempotency_key: str) -> bool:
         """Check if an attempt is currently tracked."""
@@ -2639,16 +2727,84 @@ class ConvergenceEngine:
         reconciler: Any,  # PlanReconciler — protocol-typed to avoid tight coupling
         goal_evaluator: GoalEvaluatorProtocol | None = None,
         replay_mode: bool = False,
+        state_store: "ConvergenceStateStoreType | None" = None,
     ) -> None:
         self.space_id = space_id
         self.reconciler = reconciler
         self.goal_evaluator = goal_evaluator or DeterministicGoalEvaluator()
         self.replay_mode = replay_mode
-        # Bounded counters — keyed per task_id
+        self._state_store = state_store
+        # Bounded counters — keyed per task_id (in-memory cache; backed by durable store if provided)
         self._retry_counts: dict[str, int] = {}
         self._replan_counts: dict[str, int] = {}
         # Failure fingerprint registry for loop detection
         self._seen_fingerprints: set[str] = set()
+
+    # ── Durable state helpers (RECOVERY-002, RECOVERY-003) ───────────────────
+
+    def _get_retry_count(self, task_id: str) -> int:
+        """Return retry count, loading from durable store if not yet cached."""
+        if task_id not in self._retry_counts:
+            if self._state_store is not None:
+                try:
+                    rec = self._state_store.load_state(self.space_id, task_id)
+                    self._retry_counts[task_id] = rec.retry_count
+                    self._replan_counts[task_id] = rec.replan_count
+                    for fp in rec.failure_fingerprints:
+                        self._seen_fingerprints.add(fp)
+                except Exception:
+                    self._retry_counts[task_id] = 0
+            else:
+                self._retry_counts[task_id] = 0
+        return self._retry_counts[task_id]
+
+    def _increment_retry(self, task_id: str, failure_class: str = "") -> int:
+        """Increment retry counter and persist to durable store (RECOVERY-002)."""
+        # Load first if not cached
+        current = self._get_retry_count(task_id)
+        new_count = current + 1
+        self._retry_counts[task_id] = new_count
+        if self._state_store is not None:
+            try:
+                self._state_store.increment_retry(
+                    self.space_id, task_id, failure_class or None
+                )
+            except Exception:
+                pass  # Degrade gracefully; in-memory count is still correct
+        return new_count
+
+    def _get_replan_count(self, task_id: str) -> int:
+        """Return replan count, loading from durable store if not yet cached."""
+        if task_id not in self._replan_counts:
+            # Trigger load via _get_retry_count (loads all at once)
+            self._get_retry_count(task_id)
+            self._replan_counts.setdefault(task_id, 0)
+        return self._replan_counts[task_id]
+
+    def _increment_replan(self, task_id: str) -> int:
+        """Increment replan counter and persist to durable store (RECOVERY-002)."""
+        current = self._get_replan_count(task_id)
+        new_count = current + 1
+        self._replan_counts[task_id] = new_count
+        if self._state_store is not None:
+            try:
+                self._state_store.increment_replan(self.space_id, task_id)
+            except Exception:
+                pass
+        return new_count
+
+    def _add_fingerprint(self, task_id: str, fingerprint: str) -> None:
+        """Record failure fingerprint in memory and durable store (RECOVERY-003)."""
+        self._seen_fingerprints.add(fingerprint)
+        if self._state_store is not None:
+            try:
+                self._state_store.add_fingerprint(self.space_id, task_id, fingerprint)
+            except Exception:
+                pass
+
+    def _has_fingerprint(self, fingerprint: str) -> bool:
+        """Check if fingerprint was seen (in-memory; preloaded from store at first access)."""
+        return fingerprint in self._seen_fingerprints
 
     def evaluate_and_propose(
         self,
@@ -2783,10 +2939,9 @@ class ConvergenceEngine:
 
         # ── Transient errors: bounded retry ──────────────────────────────────
         if error_class.startswith("transient."):
-            current_retries = self._retry_counts.get(failed_task_id, 0)
+            current_retries = self._get_retry_count(failed_task_id)
             if current_retries < self.MAX_RETRY_BUDGET:
-                new_count = current_retries + 1
-                self._retry_counts[failed_task_id] = new_count
+                new_count = self._increment_retry(failed_task_id, error_class)
                 return ConvergenceProposal(
                     decision=ConvergenceDecision.RETRY,
                     space_id=self.space_id,
@@ -2835,10 +2990,10 @@ class ConvergenceEngine:
     ) -> ConvergenceProposal:
         """Propose a REPLAN via PlanDelta or escalate if replan budget is exhausted."""
         replan_key = task_id or "__plan__"
-        current_replans = self._replan_counts.get(replan_key, 0)
+        current_replans = self._get_replan_count(replan_key)
 
         # Infinite-loop prevention: if same fingerprint seen twice, escalate
-        if fingerprint and fingerprint in self._seen_fingerprints:
+        if fingerprint and self._has_fingerprint(fingerprint):
             return ConvergenceProposal(
                 decision=ConvergenceDecision.ESCALATE,
                 space_id=self.space_id,
@@ -2872,9 +3027,8 @@ class ConvergenceEngine:
 
         # Record fingerprint and increment replan counter
         if fingerprint:
-            self._seen_fingerprints.add(fingerprint)
-        new_replan_count = current_replans + 1
-        self._replan_counts[replan_key] = new_replan_count
+            self._add_fingerprint(replan_key, fingerprint)
+        new_replan_count = self._increment_replan(replan_key)
 
         # Build PlanDelta for REPLAN — uses "rollback" op (legal in ALLOWED_OPS).
         # "rollback" is the correct structural recovery op for replanning.

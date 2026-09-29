@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "lease.reconciledPayload",
+  "description": "Payload schema for Pulse type lease.reconciled (ADR-0042, RECOVERY-005)",
+  "type": "object",
+  "properties": {
+    "lease_token": {
+      "type": "string"
+    },
+    "space_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "attempt_id": {
+      "type": "string"
+    },
+    "released_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": ["lease_token", "space_id", "task_id", "attempt_id", "released_at"],
+  "additionalProperties": false
+}
