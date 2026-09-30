@@ -198,6 +198,7 @@ def verify_spec_coverage() -> dict[str, Any]:
         "WORKER-", "NODE-", "CLI-", "SKILL-", "MEM-", "REC-",
         "TAINT-", "SEC-", "HUMAN-", "GOAL-", "PLAN-", "TEAM-", "MDM-",
         "MCP-", "CHAOS-", "APP-", "REG-", "V1-",
+        "RESEARCH-", "REPO-", "EVIDENCE-", "REPAIR-", "PROVENANCE-",
     )
     relevant_matrix_ids = {cid for cid in matrix_ids if any(cid.startswith(p) for p in contract_prefixes)}
 

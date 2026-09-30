@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "repair.loop_iteratedPayload",
+  "description": "Payload schema for Pulse type repair.loop_iterated (ADR-0044, REPAIR-001)",
+  "type": "object",
+  "properties": {
+    "iteration": {
+      "type": "integer"
+    },
+    "max_iterations": {
+      "type": "integer"
+    },
+    "failure_fingerprint": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "plan_version": {
+      "type": "integer"
+    },
+    "strategy": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "iteration",
+    "max_iterations",
+    "failure_fingerprint",
+    "task_id",
+    "plan_version",
+    "strategy"
+  ],
+  "additionalProperties": false
+}

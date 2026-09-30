@@ -51,6 +51,12 @@ class PulseType(str, Enum):
     TASK_WORKER_CRASH = "task.worker_crash"
     LEASE_RECONCILED = "lease.reconciled"
     RECOVERY_COMPLETED = "recovery.completed"
+    RESEARCH_RETRIEVED = "research.retrieved"
+    RESEARCH_CONFLICT_DETECTED = "research.conflict_detected"
+    REPO_PATCH_APPLIED = "repo.patch_applied"
+    REPO_PATCH_REVERTED = "repo.patch_reverted"
+    TEST_EXECUTED = "test.executed"
+    REPAIR_LOOP_ITERATED = "repair.loop_iterated"
 
 ALL_PULSE_TYPES: Final[set[str]] = {
     "space.created",
@@ -97,6 +103,12 @@ ALL_PULSE_TYPES: Final[set[str]] = {
     "task.worker_crash",
     "lease.reconciled",
     "recovery.completed",
+    "research.retrieved",
+    "research.conflict_detected",
+    "repo.patch_applied",
+    "repo.patch_reverted",
+    "test.executed",
+    "repair.loop_iterated",
 }
 
 PULSE_DEFAULT_SEVERITIES: Final[dict[str, str]] = {
@@ -144,4 +156,10 @@ PULSE_DEFAULT_SEVERITIES: Final[dict[str, str]] = {
     "task.worker_crash": "error",
     "lease.reconciled": "info",
     "recovery.completed": "info",
+    "research.retrieved": "info",
+    "research.conflict_detected": "warning",
+    "repo.patch_applied": "info",
+    "repo.patch_reverted": "warning",
+    "test.executed": "info",
+    "repair.loop_iterated": "warning",
 }

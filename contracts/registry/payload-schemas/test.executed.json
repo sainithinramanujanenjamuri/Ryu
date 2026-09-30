@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "test.executedPayload",
+  "description": "Payload schema for Pulse type test.executed (ADR-0044, EVIDENCE-001)",
+  "type": "object",
+  "properties": {
+    "total_tests": {
+      "type": "integer"
+    },
+    "passed_tests": {
+      "type": "integer"
+    },
+    "failed_tests": {
+      "type": "integer"
+    },
+    "skipped_tests": {
+      "type": "integer"
+    },
+    "exit_code": {
+      "type": "integer"
+    },
+    "duration_seconds": {
+      "type": "number"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "plan_version": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "total_tests",
+    "passed_tests",
+    "failed_tests",
+    "skipped_tests",
+    "exit_code",
+    "duration_seconds",
+    "task_id",
+    "plan_version"
+  ],
+  "additionalProperties": false
+}

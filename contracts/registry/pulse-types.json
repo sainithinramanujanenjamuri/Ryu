@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "PulseTypeRegistry",
-  "description": "Authoritative registry of all 44 valid Pulse types in RYU AI, organized by namespace.",
-  "version": "1.1.0",
+  "description": "Authoritative registry of all 50 valid Pulse types in RYU AI, organized by namespace.",
+  "version": "1.2.0",
   "types": [
     {
       "type": "space.created",
@@ -267,6 +267,42 @@
       "namespace": "recovery",
       "default_severity": "info",
       "description": "Emitted when the full startup recovery sequence completes (ADR-0042, RECOVERY-006)."
+    },
+    {
+      "type": "research.retrieved",
+      "namespace": "research",
+      "default_severity": "info",
+      "description": "Emitted when a research source is retrieved with content hash and provenance (ADR-0044, RESEARCH-001)."
+    },
+    {
+      "type": "research.conflict_detected",
+      "namespace": "research",
+      "default_severity": "warning",
+      "description": "Emitted when contradictory research evidence is discovered between sources (ADR-0044, RESEARCH-004)."
+    },
+    {
+      "type": "repo.patch_applied",
+      "namespace": "repo",
+      "default_severity": "info",
+      "description": "Emitted when an atomic code patch is applied to the workspace (ADR-0044, REPO-002)."
+    },
+    {
+      "type": "repo.patch_reverted",
+      "namespace": "repo",
+      "default_severity": "warning",
+      "description": "Emitted when a code patch is rolled back due to test failure or error (ADR-0044, REPO-005)."
+    },
+    {
+      "type": "test.executed",
+      "namespace": "test",
+      "default_severity": "info",
+      "description": "Emitted upon completion of a sandboxed test runner execution with report metrics (ADR-0044, EVIDENCE-001)."
+    },
+    {
+      "type": "repair.loop_iterated",
+      "namespace": "repair",
+      "default_severity": "warning",
+      "description": "Emitted when the convergence engine advances an iterative software repair attempt (ADR-0044, REPAIR-001)."
     }
   ]
 }

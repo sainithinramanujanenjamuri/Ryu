@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "research.retrievedPayload",
+  "description": "Payload schema for Pulse type research.retrieved (ADR-0044, RESEARCH-001)",
+  "type": "object",
+  "properties": {
+    "source_location": {
+      "type": "string"
+    },
+    "source_type": {
+      "type": "string"
+    },
+    "content_hash": {
+      "type": "string"
+    },
+    "provenance_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "plan_version": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "source_location",
+    "source_type",
+    "content_hash",
+    "provenance_id",
+    "task_id",
+    "plan_version"
+  ],
+  "additionalProperties": false
+}

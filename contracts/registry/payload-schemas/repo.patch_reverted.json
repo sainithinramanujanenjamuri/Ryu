@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "repo.patch_revertedPayload",
+  "description": "Payload schema for Pulse type repo.patch_reverted (ADR-0044, REPO-005)",
+  "type": "object",
+  "properties": {
+    "patch_id": {
+      "type": "string"
+    },
+    "target_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "reason": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "plan_version": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "patch_id",
+    "target_files",
+    "reason",
+    "task_id",
+    "plan_version"
+  ],
+  "additionalProperties": false
+}

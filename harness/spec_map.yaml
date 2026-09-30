@@ -1606,4 +1606,249 @@ spec_map:
     roadmap_phase: 12
     evidence_state: "INTEGRATION_VERIFIED"
 
+  # -----------------------------------------------------------------------
+  # Phase 14.0 — Autonomous Research & Software Engineering Contracts
+  # -----------------------------------------------------------------------
+
+  - id: RESEARCH-001
+    title: "Research Source Allowlist Enforcement"
+    architecture_section: "ADR-0044 §6, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      Whitelist enforcement; unapproved domains/paths rejected pre-dispatch; no arbitrary web crawling.
+    contract:
+      file: "contracts/registry/pulse-types.json"
+      rule: "research.retrieved pulse and domain allowlist policy"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14ContractCoverage::test_all_phase14_contract_ids_defined"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: RESEARCH-002
+    title: "Research Provenance & Transformation Tracking"
+    architecture_section: "ADR-0044 §9, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      Every research artifact links cryptographically to source hash, task ID, and plan version; transformation chain intact.
+    contract:
+      file: "contracts/registry/payload-schemas/research.retrieved.json"
+      rule: "provenance_id, source_location, content_hash required"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14Governance::test_phase14_payload_schemas_valid"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: RESEARCH-003
+    title: "Research Content Sanitization & Mandatory Taint"
+    architecture_section: "ADR-0044 §6, §14, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      External research content enters with taint: True; passive data extraction only; command execution blocked.
+    contract:
+      file: "core/space/kernel.py"
+      rule: "TAINT-005 taint protection blocks security grants"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14ContractCoverage::test_authority_invariants"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: RESEARCH-004
+    title: "Research Conflict State Detection"
+    architecture_section: "ADR-0044 §6, §15, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      Contradictory evidence creates explicit CONFLICTING state; no silent tie-break or premature goal satisfaction.
+    contract:
+      file: "contracts/registry/payload-schemas/research.conflict_detected.json"
+      rule: "research.conflict_detected schema and conflict detection"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14Governance::test_phase14_payload_schemas_valid"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: RESEARCH-005
+    title: "Research Multi-Stage Artifact Synthesis"
+    architecture_section: "ADR-0044 §6, §9, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      Final synthesis notes link full parent transformation chain back to raw source file bytes and hashes.
+    contract:
+      file: "contracts/registry/pulse-types.json"
+      rule: "multi-stage provenance linkage"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14Governance::test_phase14_pulse_types_in_registry"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: REPO-001
+    title: "Repository Inspection Workspace Scoping"
+    architecture_section: "ADR-0044 §7, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      File listing, tree traversal, and file reading strictly bounded to workspace sandbox root; directory traversal blocked.
+    contract:
+      file: "workers/sandbox/filesystem.py"
+      rule: "FilesystemSandbox path canonicalization and containment"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14ContractCoverage::test_core_boundary_independence"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: REPO-002
+    title: "Atomic Code Patch Application"
+    architecture_section: "ADR-0044 §7, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      Patches apply atomically as unified diffs; failure on any hunk or file triggers immediate clean rollback.
+    contract:
+      file: "contracts/registry/payload-schemas/repo.patch_applied.json"
+      rule: "repo.patch_applied schema and atomic application"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14Governance::test_phase14_payload_schemas_valid"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: REPO-003
+    title: "Sensitive Path Modification Denylist"
+    architecture_section: "ADR-0044 §7, §14, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      Writes to secrets, credentials, environment files (.env), or CI deployment manifests rejected or require Human Gate.
+    contract:
+      file: "contracts/registry/payload-schemas/repo.patch_applied.json"
+      rule: "forbidden_paths enforcement on patch targets"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14Governance::test_phase14_payload_schemas_valid"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: REPO-004
+    title: "Patch Size & File Count Ceilings"
+    architecture_section: "ADR-0044 §7, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      Maximum 5 files and 500 lines changed per patch to prevent unconstrained refactoring or runaway mutations.
+    contract:
+      file: "contracts/registry/payload-schemas/repo.patch_applied.json"
+      rule: "changed_line_count and target_files bounds"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14Governance::test_phase14_payload_schemas_valid"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: REPO-005
+    title: "Reversible Code Modification & Hash Verification"
+    architecture_section: "ADR-0044 §7, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      Every patch captures before/after SHA-256 file hashes; deterministic rollback restores bitwise identical prior state.
+    contract:
+      file: "contracts/registry/payload-schemas/repo.patch_reverted.json"
+      rule: "repo.patch_reverted schema and before/after hashes"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14Governance::test_phase14_payload_schemas_valid"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: EVIDENCE-001
+    title: "Sandboxed Test Runner Evidence Verification"
+    architecture_section: "ADR-0044 §8, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      'Tests passed' strictly requires verified exit code 0 and structured TestExecutionReport; model claims rejected.
+    contract:
+      file: "contracts/registry/payload-schemas/test.executed.json"
+      rule: "test.executed schema and exit_code verification"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14Governance::test_phase14_payload_schemas_valid"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: EVIDENCE-002
+    title: "Evidence Hierarchy & Model Assertion Subordination"
+    architecture_section: "ADR-0044 §8, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      Model assertions cannot override failing test results, invalid process exits, or tampered artifact hashes.
+    contract:
+      file: "core/orchestrator/dispatch_model.py"
+      rule: "DeterministicGoalEvaluator evidence ranking"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14ContractCoverage::test_authority_invariants"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: EVIDENCE-003
+    title: "Artifact Graph Lineage & Relationship Tracking"
+    architecture_section: "ADR-0044 §9, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      Artifacts record explicit derived_from, validates, invalidates, and supersedes relations in metadata.
+    contract:
+      file: "core/orchestrator/dispatch_model.py"
+      rule: "VerifiedExecutionEvidence artifact relationship tracking"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14ContractCoverage::test_all_phase14_contract_ids_defined"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: REPAIR-001
+    title: "Bounded Test-Repair Loop Ceilings"
+    architecture_section: "ADR-0044 §10, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      Repair loop cycles strictly capped at MAX_REPAIR_ITERATIONS = 3; budget exhaustion escalates to human operator.
+    contract:
+      file: "contracts/registry/payload-schemas/repair.loop_iterated.json"
+      rule: "repair.loop_iterated schema and iteration bound"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14Governance::test_phase14_payload_schemas_valid"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: REPAIR-002
+    title: "Repair Failure Fingerprinting & Loop Prevention"
+    architecture_section: "ADR-0044 §10, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      Repeated test failure trace signature triggers immediate ConvergenceDecision.ESCALATE; infinite thrashing prevented.
+    contract:
+      file: "core/orchestrator/dispatch_model.py"
+      rule: "ConvergenceEngine failure fingerprinting"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14ContractCoverage::test_authority_invariants"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: REPAIR-003
+    title: "Repair Memory Counterfactual Guidance"
+    architecture_section: "ADR-0044 §10, §11, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      Past repair experiences provide advisory hints (ExperienceHint) to avoid repeating previously failed patch strategies.
+    contract:
+      file: "core/space/memory_protocol.py"
+      rule: "AdaptationLayerProtocol advisory hints"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14ContractCoverage::test_authority_invariants"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: REPAIR-004
+    title: "Replan Budget Deduction & CAS Integration"
+    architecture_section: "ADR-0044 §10, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      Software repair plan adjustments consume from standard plan replan budget; committed strictly via SpaceKernel CAS.
+    contract:
+      file: "core/space/kernel.py"
+      rule: "commit_plan_delta single-writer atomic CAS"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14ContractCoverage::test_authority_invariants"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: PROVENANCE-001
+    title: "Transformation Chain Auditability"
+    architecture_section: "ADR-0044 §9, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      Audit log traces statement -> note -> extract -> raw source file bytes and cryptographic hashes.
+    contract:
+      file: "contracts/registry/payload-schemas/research.retrieved.json"
+      rule: "provenance_id and content_hash traceability"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14Governance::test_phase14_payload_schemas_valid"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: PROVENANCE-002
+    title: "Research & Artifact Source Immutability"
+    architecture_section: "ADR-0044 §9, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      Source location metadata and content hashes are frozen upon retrieval; tampering detected during evidence evaluation.
+    contract:
+      file: "contracts/registry/payload-schemas/research.retrieved.json"
+      rule: "frozen provenance records and sha256 verification"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14Governance::test_phase14_payload_schemas_valid"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+  - id: PROVENANCE-003
+    title: "Cross-Space Provenance Isolation"
+    architecture_section: "ADR-0044 §9, §14, CONTRACT_MATRIX §30G"
+    acceptance_criterion: >
+      Provenance records cannot reference artifacts or tasks belonging to another Space without formal promotion grant.
+    contract:
+      file: "core/space/kernel.py"
+      rule: "Space isolation and verify_space_identity"
+    harness_case: "harness/cases/phase14/test_phase14_contracts_governance.py::TestPhase14ContractCoverage::test_authority_invariants"
+    roadmap_phase: 14
+    evidence_state: "CONTRACT_ONLY"
+
+
 

@@ -42,7 +42,7 @@ def audit_adrs(repo_root: Path) -> tuple[bool, dict[str, Any]]:
         return False, {"error": "adr/ directory not found"}
 
     adr_files = sorted(list(adr_dir.glob("00*.md")))
-    expected_count = 43
+    expected_count = 44
 
     adrs_found = {}
     missing_numbers = []
@@ -179,6 +179,7 @@ def audit_contract_matrix(repo_root: Path) -> tuple[bool, dict[str, Any]]:
         "WORKER-", "NODE-", "CLI-", "SKILL-", "MEM-", "REC-",
         "TAINT-", "SEC-", "HUMAN-", "GOAL-", "PLAN-", "TEAM-", "MDM-",
         "MCP-", "CHAOS-", "APP-", "REG-", "V1-",
+        "RESEARCH-", "REPO-", "EVIDENCE-", "REPAIR-", "PROVENANCE-",
     )
 
     relevant_contracts = {
@@ -249,7 +250,7 @@ def main() -> int:
     print("============================================================")
     report = audit_governance()
     a = report["audits"]
-    print(f"  ADR Inventory (0001..0043):     {'[PASS]' if a['adr_audit']['passed'] else '[FAIL]'}")
+    print(f"  ADR Inventory (0001..0044):     {'[PASS]' if a['adr_audit']['passed'] else '[FAIL]'}")
     print(f"  Pulse Registry & Codegen Sync:  {'[PASS]' if a['pulse_registry_audit']['passed'] else '[FAIL]'}")
     print(f"  Payload Schemas (1:1 Coverage): {'[PASS]' if a['payload_schemas_audit']['passed'] else '[FAIL]'}")
     print(f"  Contract Matrix Integrity:      {'[PASS]' if a['contract_matrix_audit']['passed'] else '[FAIL]'}")

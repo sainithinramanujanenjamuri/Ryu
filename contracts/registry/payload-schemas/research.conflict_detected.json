@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "research.conflict_detectedPayload",
+  "description": "Payload schema for Pulse type research.conflict_detected (ADR-0044, RESEARCH-004)",
+  "type": "object",
+  "properties": {
+    "source_a": {
+      "type": "string"
+    },
+    "source_b": {
+      "type": "string"
+    },
+    "topic": {
+      "type": "string"
+    },
+    "conflict_summary": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "plan_version": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "source_a",
+    "source_b",
+    "topic",
+    "conflict_summary",
+    "task_id",
+    "plan_version"
+  ],
+  "additionalProperties": false
+}

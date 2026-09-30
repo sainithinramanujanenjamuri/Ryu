@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "repo.patch_appliedPayload",
+  "description": "Payload schema for Pulse type repo.patch_applied (ADR-0044, REPO-002)",
+  "type": "object",
+  "properties": {
+    "patch_id": {
+      "type": "string"
+    },
+    "target_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "changed_line_count": {
+      "type": "integer"
+    },
+    "before_hashes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "after_hashes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "plan_version": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "patch_id",
+    "target_files",
+    "changed_line_count",
+    "before_hashes",
+    "after_hashes",
+    "task_id",
+    "plan_version"
+  ],
+  "additionalProperties": false
+}
