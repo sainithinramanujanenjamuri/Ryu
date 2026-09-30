@@ -5,7 +5,7 @@ scripts/v1_audit_governance.py
 V1-005 — Governance & Documentation Hygiene Audit.
 
 Verifies:
-1. Complete ADR inventory (all 42 ADRs 0001..0042 present with required sections).
+1. Complete ADR inventory (all 43 ADRs 0001..0043 present with required sections).
 2. Pulse registry completeness (all 44 types registered and synchronized with codegen).
 3. Payload schemas completeness (1:1 schema file for every registered pulse type).
 4. Contract matrix integrity (bidirectional validity and unique contract IDs).
@@ -42,7 +42,7 @@ def audit_adrs(repo_root: Path) -> tuple[bool, dict[str, Any]]:
         return False, {"error": "adr/ directory not found"}
 
     adr_files = sorted(list(adr_dir.glob("00*.md")))
-    expected_count = 42
+    expected_count = 43
 
     adrs_found = {}
     missing_numbers = []
@@ -249,7 +249,7 @@ def main() -> int:
     print("============================================================")
     report = audit_governance()
     a = report["audits"]
-    print(f"  ADR Inventory (0001..0042):     {'[PASS]' if a['adr_audit']['passed'] else '[FAIL]'}")
+    print(f"  ADR Inventory (0001..0043):     {'[PASS]' if a['adr_audit']['passed'] else '[FAIL]'}")
     print(f"  Pulse Registry & Codegen Sync:  {'[PASS]' if a['pulse_registry_audit']['passed'] else '[FAIL]'}")
     print(f"  Payload Schemas (1:1 Coverage): {'[PASS]' if a['payload_schemas_audit']['passed'] else '[FAIL]'}")
     print(f"  Contract Matrix Integrity:      {'[PASS]' if a['contract_matrix_audit']['passed'] else '[FAIL]'}")

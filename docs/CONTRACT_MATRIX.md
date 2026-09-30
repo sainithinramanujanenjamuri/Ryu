@@ -621,6 +621,18 @@ If the architecture does not answer it, an ADR is required before implementation
 
 ---
 
+# 30F. Phase 13 Closed-Loop Experiential Adaptation & Memory-Guided Execution Contracts
+
+| ID          | Contract                                           | Required Invariant                                                                                                    | Implementation Boundary                                                                       | Harness / Evidence                                                               | Roadmap  | Status          |
+| ----------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | -------- | --------------- |
+| ADAPT-001   | Real-Time Experience Capture & Secret Scrubbing    | `DeterministicDispatcher` reports neutral `TaskExecutionOutcome`; secrets scrubbed; persists `ExperienceRecord`.     | `core/space/memory_protocol.py`, `memory/experience_observer.py`, `core/orchestrator/dispatch_model.py` | `memory/tests/test_phase13_experiential_adaptation.py` (Group B, Group F)        | Phase 13 | `GATE_VERIFIED` |
+| ADAPT-002   | Contextual Advisory Adaptation Hints               | `AdaptationLayer` derives bounded, contextual `ExperienceHint` recommendations; strictly advisory; 0 plan authority.  | `core/space/memory_protocol.py`, `core/memory/adaptation.py`                                  | `memory/tests/test_phase13_experiential_adaptation.py` (Group C)                 | Phase 13 | `GATE_VERIFIED` |
+| ADAPT-003   | Advisory Hints in Replan Proposals                 | `ConvergenceEngine` queries hints during REPLAN; incorporates counterfactuals & alts into advisory proposals.        | `core/orchestrator/dispatch_model.py`                                                         | `memory/tests/test_phase13_experiential_adaptation.py` (Group D, Group I)        | Phase 13 | `GATE_VERIFIED` |
+| ADAPT-004   | Adversarial Memory Invariant Enforcement           | Malicious memory cannot override verified evidence, bypass Admission Control, reset budgets, or bypass approval.     | `core/orchestrator/dispatch_model.py`, `core/capabilities/admission.py`, `core/space/kernel.py` | `memory/tests/test_phase13_experiential_adaptation.py` (Group E)                 | Phase 13 | `GATE_VERIFIED` |
+| ADAPT-005   | Space Isolation & Cryptographic Promotion Boundary | Adaptation hints Space-local by default; cross-space adaptation requires valid, single-use `PromotionAuthorization`.  | `core/space/memory_protocol.py`, `memory/adapters/in_memory.py`, `memory/promotion.py`        | `memory/tests/test_phase13_experiential_adaptation.py` (Group G)                 | Phase 13 | `GATE_VERIFIED` |
+
+---
+
 # 31. Governing Principle
 
 > **If we cannot point from an architectural requirement to a contract, from that contract to an implementation boundary, and from that implementation to executable evidence, RYU AI is not yet proven.**
@@ -629,7 +641,7 @@ The matrix is a verification map, not a second architecture.
 
 ---
 
-**Document status:** `ACTIVE — v1.0.0 RELEASE BASELINE | Phase 12.8 GATE_VERIFIED`
+**Document status:** `ACTIVE — v1.0.0 RELEASE BASELINE | Phase 13 GATE_VERIFIED`
 
 **Master Verification:** `GATE: PASS (V1-001 through V1-006)`
 

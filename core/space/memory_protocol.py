@@ -14,9 +14,9 @@ import hashlib
 import hmac
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 
 class MemoryScope(str, Enum):
@@ -214,5 +214,75 @@ class SpaceMemoryProtocol(Protocol):
 
     def get_global_knowledge(self, knowledge_id: str) -> KnowledgeEntry | None:
         """Retrieve a promoted global knowledge entry."""
+        ...
+
+
+# ── Phase 13: Closed-Loop Experiential Adaptation Protocols (ADR-0043) ────────
+
+@dataclass(frozen=True)
+class TaskExecutionOutcome:
+    """Core-neutral, verified execution outcome reported by DeterministicDispatcher (ADAPT-001).
+
+    The Dispatcher reports this outcome to an ExperienceObserverProtocol.
+    The Dispatcher does NOT construct memory-domain ExperienceRecords;
+    the memory subsystem owns reflection, sanitization, and persistence.
+    """
+
+    task_id: str
+    space_id: str
+    plan_version: int
+    capability: str
+    params: dict[str, Any]
+    status: str  # 'completed' | 'failed'
+    exit_code: int | None = None
+    duration_seconds: float = 0.0
+    error_class: str | None = None
+    error_message: str | None = None
+    failure_fingerprint: str | None = None
+    result_ref: str | None = None
+    artifact_refs: tuple[str, ...] = field(default_factory=tuple)
+    dependencies: tuple[str, ...] = field(default_factory=tuple)
+    taint: bool = False
+    completed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+@dataclass(frozen=True)
+class ExperienceHint:
+    """Contextual, immutable advisory hint derived from past execution experience (ADR-0036, ADR-0043, ADAPT-002).
+
+    Advisory only; cannot directly mutate plans, grant capabilities, or execute workers.
+    """
+
+    experience_id: str
+    failed_capability: str
+    suggested_avoidance: list[str]
+    outcome_summary: str
+    counterfactual_summary: str
+    relevance_score: float = 1.0
+    source_space_id: str = ""
+    suggested_alternative_capability: str = ""
+    target_task_id: str = ""
+
+
+@runtime_checkable
+class ExperienceObserverProtocol(Protocol):
+    """Protocol for observing verified task execution outcomes without coupling core to memory (ADAPT-001)."""
+
+    def observe_task_outcome(self, outcome: TaskExecutionOutcome) -> str | None:
+        """Observe verified task execution outcome, reflect, persist experience, and return experience_id or None."""
+        ...
+
+
+@runtime_checkable
+class AdaptationLayerProtocol(Protocol):
+    """Protocol for querying advisory experience hints without coupling core to memory (ADAPT-002, ADAPT-003)."""
+
+    def generate_hints(
+        self,
+        space_id: str,
+        situation_hint: dict[str, Any],
+        limit: int = 5,
+    ) -> list[ExperienceHint]:
+        """Generate advisory experience hints strictly within the specified space."""
         ...
 

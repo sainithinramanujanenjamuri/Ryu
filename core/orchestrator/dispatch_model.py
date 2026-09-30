@@ -33,6 +33,12 @@ from core.plans.task_graph import (
 from core.resources.identity import ResourceIdentity
 from core.resources.lease import Lease
 from core.resources.manager import ResourceAcquisitionResult, ResourceManager
+from core.space.memory_protocol import (
+    AdaptationLayerProtocol,
+    ExperienceHint,
+    ExperienceObserverProtocol,
+    TaskExecutionOutcome,
+)
 
 
 class CrossSpaceViolationError(Exception):
@@ -225,6 +231,12 @@ class TaskExecutionResult:
     def is_success(self) -> bool:
         return self.status == "ok" and self.error is None
 
+    @property
+    def exit_code(self) -> int:
+        if isinstance(self.details, dict):
+            return int(self.details.get("exit_code", 0))
+        return 0
+
 
 class WorkerInvokerProtocol(Protocol):
     """Dependency inversion protocol for invoking capability workers (AGENTS.md §7)."""
@@ -335,9 +347,11 @@ class DeterministicDispatcher:
     def __init__(
         self,
         attempt_store: "ExecutionAttemptStoreType | None" = None,
+        experience_observer: ExperienceObserverProtocol | None = None,
     ) -> None:
         self._tracked_attempts: dict[str, DispatchAttempt] = {}
         self._attempt_store = attempt_store
+        self.experience_observer = experience_observer
         # Pre-populate in-memory cache from durable store if provided
         if self._attempt_store is not None:
             self._preload_tracked_attempts()
@@ -2255,6 +2269,28 @@ class DeterministicDispatcher:
                     expected_plan_version=cur_version,
                 )
 
+                # Report verified outcome to experience observer (ADAPT-001)
+                if self.experience_observer is not None and not replay_mode:
+                    try:
+                        self.experience_observer.observe_task_outcome(
+                            TaskExecutionOutcome(
+                                task_id=task_id,
+                                space_id=kernel.space_id,
+                                plan_version=cur_version,
+                                capability=node.capability,
+                                params=dict(node.params),
+                                status="completed",
+                                exit_code=execution_result.exit_code,
+                                duration_seconds=execution_result.duration_seconds,
+                                result_ref=execution_result.request_id,
+                                dependencies=tuple(node.dependencies),
+                                taint=ver_res.tainted,
+                                completed_at=datetime.now(timezone.utc),
+                            )
+                        )
+                    except Exception:
+                        pass  # Experience observation failure must never fail the task
+
                 return TaskCompletionResult(
                     task_id=task_id,
                     space_id=kernel.space_id,
@@ -2310,6 +2346,29 @@ class DeterministicDispatcher:
                     failed_task_id=task_id,
                     expected_plan_version=cur_version,
                 )
+
+                # Report failure outcome to experience observer (ADAPT-001)
+                if self.experience_observer is not None and not replay_mode:
+                    try:
+                        self.experience_observer.observe_task_outcome(
+                            TaskExecutionOutcome(
+                                task_id=task_id,
+                                space_id=kernel.space_id,
+                                plan_version=cur_version,
+                                capability=node.capability,
+                                params=dict(node.params),
+                                status="failed",
+                                exit_code=execution_result.exit_code,
+                                duration_seconds=execution_result.duration_seconds,
+                                error_class="terminal.evidence_verification_failed",
+                                error_message=fail_msg,
+                                dependencies=tuple(node.dependencies),
+                                taint=ver_res.tainted,
+                                completed_at=datetime.now(timezone.utc),
+                            )
+                        )
+                    except Exception:
+                        pass  # Experience observation failure must never fail the task
 
                 return TaskCompletionResult(
                     task_id=task_id,
@@ -2692,6 +2751,11 @@ class ConvergenceProposal:
     # Failure fingerprint for loop-detection (SHA-256 of space+task+error)
     failure_fingerprint: str = ""
 
+    # Phase 13: Experiential adaptation provenance & advisory hints (ADAPT-003, ADAPT-004)
+    adaptation_hints: tuple[ExperienceHint, ...] = field(default_factory=tuple)
+    counterfactual_recommendation: str = ""
+    source_experience_id: str = ""
+
 
 def _compute_failure_fingerprint(space_id: str, task_id: str, error: str) -> str:
     """Deterministic SHA-256 failure fingerprint for loop-detection (Phase 12.6)."""
@@ -2728,12 +2792,14 @@ class ConvergenceEngine:
         goal_evaluator: GoalEvaluatorProtocol | None = None,
         replay_mode: bool = False,
         state_store: "ConvergenceStateStoreType | None" = None,
+        adaptation_layer: AdaptationLayerProtocol | None = None,
     ) -> None:
         self.space_id = space_id
         self.reconciler = reconciler
         self.goal_evaluator = goal_evaluator or DeterministicGoalEvaluator()
         self.replay_mode = replay_mode
         self._state_store = state_store
+        self.adaptation_layer = adaptation_layer
         # Bounded counters — keyed per task_id (in-memory cache; backed by durable store if provided)
         self._retry_counts: dict[str, int] = {}
         self._replan_counts: dict[str, int] = {}
@@ -3030,34 +3096,76 @@ class ConvergenceEngine:
             self._add_fingerprint(replan_key, fingerprint)
         new_replan_count = self._increment_replan(replan_key)
 
+        # Phase 13: Query advisory adaptation hints (ADAPT-002, ADAPT-003)
+        adaptation_hints: list[ExperienceHint] = []
+        counterfactual_rec = ""
+        source_exp_id = ""
+        suggested_alt_cap = ""
+
+        if self.adaptation_layer is not None and not self.replay_mode:
+            try:
+                hint_query: dict[str, Any] = {
+                    "task_id": task_id or "__plan__",
+                    "error_class": reason,
+                    "fingerprint": fingerprint,
+                }
+                if task_id:
+                    try:
+                        cur_node = kernel.get_task_graph().get_node(task_id)
+                        if cur_node is not None:
+                            hint_query["capability"] = cur_node.capability
+                    except Exception:
+                        pass
+
+                hints = self.adaptation_layer.generate_hints(
+                    space_id=self.space_id,
+                    situation_hint=hint_query,
+                    limit=5,
+                )
+                adaptation_hints = list(hints)
+                for h in adaptation_hints:
+                    if h.suggested_alternative_capability and not suggested_alt_cap:
+                        suggested_alt_cap = h.suggested_alternative_capability
+                    if h.counterfactual_summary and not counterfactual_rec:
+                        counterfactual_rec = h.counterfactual_summary
+                    if h.experience_id and not source_exp_id:
+                        source_exp_id = h.experience_id
+            except Exception:
+                pass  # Advisory layer failure must never block convergence
+
         # Build PlanDelta for REPLAN — uses "rollback" op (legal in ALLOWED_OPS).
         # "rollback" is the correct structural recovery op for replanning.
         # The Dispatcher does NOT commit this; the caller must pass it to SpaceKernel.
         replan_ops: list[dict[str, Any]] = []
+        payload_data: dict[str, Any] = {
+            "reason": reason,
+            "replan_attempt": new_replan_count,
+            "failure_fingerprint": fingerprint,
+        }
+        if suggested_alt_cap:
+            payload_data["suggested_alternative"] = suggested_alt_cap
+        if counterfactual_rec:
+            payload_data["counterfactual_recommendation"] = counterfactual_rec
+        if source_exp_id:
+            payload_data["source_experience_id"] = source_exp_id
+
         if task_id is not None:
             replan_ops.append(
                 {
                     "op": "rollback",
                     "target_node_id": task_id,
-                    "payload": {
-                        "reason": reason,
-                        "replan_attempt": new_replan_count,
-                        "failure_fingerprint": fingerprint,
-                    },
+                    "payload": payload_data,
                 }
             )
         else:
+            payload_data["missing_criteria"] = (
+                eval_result.missing_criteria if eval_result else []
+            )
             replan_ops.append(
                 {
                     "op": "rollback",
                     "target_node_id": "__plan__",
-                    "payload": {
-                        "reason": reason,
-                        "replan_attempt": new_replan_count,
-                        "missing_criteria": (
-                            eval_result.missing_criteria if eval_result else []
-                        ),
-                    },
+                    "payload": payload_data,
                 }
             )
 
@@ -3069,19 +3177,26 @@ class ConvergenceEngine:
             delta_id=f"replan-{replan_key}-attempt-{new_replan_count}",
         )
 
+        reasoning_msg = (
+            f"REPLAN proposed (attempt {new_replan_count}/{self.MAX_REPLAN_BUDGET}). "
+            f"Reason: {reason}"
+        )
+        if counterfactual_rec:
+            reasoning_msg += f" [Adaptation: {counterfactual_rec[:100]}]"
+
         return ConvergenceProposal(
             decision=ConvergenceDecision.REPLAN,
             space_id=self.space_id,
             plan_version=plan_version,
             task_id=task_id,
-            reasoning=(
-                f"REPLAN proposed (attempt {new_replan_count}/{self.MAX_REPLAN_BUDGET}). "
-                f"Reason: {reason}"
-            ),
+            reasoning=reasoning_msg,
             replan_attempt=new_replan_count,
             plan_delta=plan_delta,
             evaluation=eval_result,
             failure_fingerprint=fingerprint,
+            adaptation_hints=tuple(adaptation_hints),
+            counterfactual_recommendation=counterfactual_rec,
+            source_experience_id=source_exp_id,
         )
 
     def apply_proposal(
@@ -3114,11 +3229,14 @@ class ConvergenceEngine:
         # Bounded rebase loop: at most MAX_REPLAN_BUDGET CAS attempts
         delta = proposal.plan_delta
         for attempt in range(self.reconciler.max_rebases if self.reconciler else 3):
-            ok, new_ver, err = kernel.commit_plan_delta(
-                delta, proposal_id=delta.delta_id
-            )
-            if ok:
-                return True, new_ver, None
+            try:
+                ok, new_ver, err = kernel.commit_plan_delta(
+                    delta, proposal_id=delta.delta_id
+                )
+                if ok:
+                    return True, new_ver, None
+            except Exception as exc:
+                return False, kernel.get_plan_version(), f"PlanDelta commit failed: {exc}"
             # Rebase stale delta onto latest version
             latest = kernel.get_plan_version()
             delta = PlanDelta(
