@@ -17,9 +17,9 @@ def validator() -> PulseValidator:
 
 
 def test_known_types_loaded(validator: PulseValidator) -> None:
-    """Registry must load at least 44 known types (38 original + 6 recovery types from ADR-0042)."""
+    """Registry must load 50 known types (38 original + 6 recovery from ADR-0042 + 6 research/SE from ADR-0044)."""
     known = validator.known_types()
-    assert len(known) == 44, f"Expected 44 types, got {len(known)}: {sorted(known)}"
+    assert len(known) == 50, f"Expected 50 types, got {len(known)}: {sorted(known)}"
 
 
 def test_valid_type_accepted(validator: PulseValidator) -> None:
