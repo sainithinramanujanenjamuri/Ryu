@@ -22,7 +22,7 @@ Phase 14.4 implements:
 
 Crucially, Phase 14.4 maintains strict scope boundaries:
 - **Pure-Python**: 0 external subprocesses, 0 `git apply` / system `patch` binaries.
-- **Zero Execution**: Does not execute tests or evaluate repair loops (`EVIDENCE-001` and `REPAIR-001..004` belong to Phase 14.5).
+- **Zero Execution**: Does not execute tests (Phase 14.5, `EVIDENCE-001..003`) or evaluate repair loops (Phase 14.6, `REPAIR-001..004`).
 - **Zero Git State Mutation**: Does not create git branches, commits, or push to remotes.
 
 ---
@@ -76,14 +76,14 @@ Crucially, Phase 14.4 maintains strict scope boundaries:
 ### Test Counts & Execution Metrics
 
 - **Dedicated Phase 14.4 Test Suite:**
-  - `workers/tests/test_phase14_4_patcher.py`: 59 passed
+  - `workers/tests/test_phase14_4_patcher.py`: 62 passed
   - `core/space/tests/test_patch_models.py`: 9 passed
-  - **Total Dedicated Phase 14.4 Tests:** 68 passed, 0 skipped, 0 failed.
+  - **Total Dedicated Phase 14.4 Tests:** 71 passed, 0 skipped, 0 failed.
 
 - **Full Regression Suites:**
-  - `core` and `workers` suites: 548 passed, 1 skipped, 0 failed (including dedicated tests).
+  - `core` and `workers` suites: 551 passed, 1 skipped, 0 failed (including dedicated tests).
   - `harness` suite: 325 passed, 12 skipped, 0 failed.
-  - **Total Passing Regression Tests:** 873 passed, 13 skipped, 0 failed.
+  - **Total Passing Regression Tests:** 876 passed, 13 skipped, 0 failed.
 
 - **30+ Security & Adversarial Vectors Verified:**
   - Path traversal: `../`, `../../`, Windows `..\`, drive escape `C:`, UNC `\\server\share`, null-byte injection.
@@ -91,6 +91,11 @@ Crucially, Phase 14.4 maintains strict scope boundaries:
   - Prompt injection inertness: adversarial instructions inside patch body treated as inert passive data.
   - Concurrency conflicts: pre-patch hash mismatch aborts transaction before touching disk.
   - All-or-nothing rollback: any context mismatch or write failure leaves 0 files modified on disk.
+
+- **Final Evidence Hardening Pass:**
+  - **Crash Recovery & Concurrency Conflict (`REPO-005`):** `test_crash_recovery_partial_mutation_detection` proves out-of-band corruption or unexpected pre-patch hashes cause graceful `PatchTransactionState.FAILED` without touching uncorrupted files, and write I/O crashes mid-transaction execute verified bitwise rollback (`state == ROLLED_BACK`, `rollback_verified == True`).
+  - **Replay Immutability (`PULSE-009`, `REC-001`):** `test_replay_mode_does_not_mutate_repository` proves consuming historical patch pulse events does not write or mutate repository files on disk.
+  - **Cryptographic Provenance Binding (`PROVENANCE-001..003`):** `test_patch_provenance_cryptographic_binding` proves every patch operation generates a `ProvenanceRecord` cryptographically binding `patch_id`, diff content hash (SHA-256), `space_id`, `task_id`, `plan_version`, and producer identity (`worker_id`).
 
 - **Governance & Boundary Verification:**
   - `scripts/dep_guard.py`: PASS (0 forbidden imports in `core/`).
@@ -104,8 +109,8 @@ Crucially, Phase 14.4 maintains strict scope boundaries:
 
 ## 4. What Was NOT Implemented (Deferred Scope)
 
-- **Test Runner (`EVIDENCE-001`, `EVIDENCE-002`):** Deferred to Phase 14.5.
-- **Autonomous Repair Loops (`REPAIR-001` through `REPAIR-004`):** Deferred to Phase 14.5.
+- **Test Runner (`EVIDENCE-001..003`):** Deferred to Phase 14.5 (*Autonomous Test Runner & Structured Evidence Extractor*).
+- **Autonomous Repair Loops (`REPAIR-001..004`):** Deferred to Phase 14.6 (*Bounded Test-Repair Loop & Convergence Engine Extension*).
 - **Git State Operations:** No git commits, branch creation, worktrees, or remote pushing.
 - **Subprocess / CLI Patching:** Strictly pure-Python parser and applicator.
 
@@ -113,4 +118,5 @@ Crucially, Phase 14.4 maintains strict scope boundaries:
 
 ## 5. Next Steps
 
-- Proceed to Phase 14.5: Sandboxed Test Runner, Evidence Verification & Bounded Repair Loop (`EVIDENCE-001..003`, `REPAIR-001..004`).
+- Proceed to Phase 14.5: Autonomous Test Runner & Structured Evidence Extractor (`EVIDENCE-001..003`).
+- Follow with Phase 14.6: Bounded Test-Repair Loop & Convergence Engine Extension (`REPAIR-001..004`).

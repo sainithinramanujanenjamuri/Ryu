@@ -550,6 +550,27 @@ class RepositoryWorker(BaseWorker):
             expected_before_hashes=expected_before_hashes,
         )
 
+        # Build Provenance Record for the patch operation (PROVENANCE-001..003)
+        plan_ver = max(1, int(request.plan_version or 1))
+        diff_bytes = diff_text.encode("utf-8")
+        diff_sha = compute_sha256(diff_bytes)
+        patch_source_ident = SourceIdentity(
+            source_id=repo_ident.repository_id,
+            source_type="repository_patch",
+            locator=repo_ident.canonical_root,
+            space_id=request.space_id,
+        )
+        patch_prov = ProvenanceRecord(
+            provenance_id=f"prov-{request.task_id}-patch",
+            source_identity=patch_source_ident,
+            space_id=request.space_id,
+            task_id=request.task_id,
+            plan_version=plan_ver,
+            producer=self.worker_id,
+            content_hash=diff_sha,
+            transformation_stage=TransformationStage.RAW,
+        )
+
         artifacts: list[Artifact] = []
         if self.base_working_dir:
             art_dir = self.base_working_dir / "artifacts" / "repository"
@@ -557,7 +578,6 @@ class RepositoryWorker(BaseWorker):
 
             # 1. Raw diff artifact
             diff_path = art_dir / f"{request.task_id}_patch.diff"
-            diff_bytes = diff_text.encode("utf-8")
             diff_path.write_bytes(diff_bytes)
             artifacts.append(
                 Artifact(
@@ -566,8 +586,8 @@ class RepositoryWorker(BaseWorker):
                     path=str(diff_path),
                     mime_type="text/x-diff",
                     size_bytes=len(diff_bytes),
-                    sha256=compute_sha256(diff_bytes),
-                    metadata={"patch_id": patch_id},
+                    sha256=diff_sha,
+                    metadata={"patch_id": patch_id, "provenance_id": patch_prov.provenance_id},
                 )
             )
 
@@ -575,6 +595,8 @@ class RepositoryWorker(BaseWorker):
             manifest_dict = {
                 "patch_id": result.patch_id,
                 "transaction_id": result.transaction_id,
+                "provenance_id": patch_prov.provenance_id,
+                "provenance_canonical_hash": patch_prov.canonical_hash,
                 "success": result.success,
                 "state": result.state.value,
                 "applied_files": list(result.applied_files),
@@ -597,7 +619,7 @@ class RepositoryWorker(BaseWorker):
                     mime_type="application/json",
                     size_bytes=len(manifest_json.encode("utf-8")),
                     sha256=compute_sha256(manifest_json),
-                    metadata={"patch_id": patch_id, "state": result.state.value},
+                    metadata={"patch_id": patch_id, "state": result.state.value, "provenance_id": patch_prov.provenance_id},
                 )
             )
 
@@ -657,6 +679,8 @@ class RepositoryWorker(BaseWorker):
                 output_data={
                     "patch_id": result.patch_id,
                     "transaction_id": result.transaction_id,
+                    "provenance_id": patch_prov.provenance_id,
+                    "provenance_canonical_hash": patch_prov.canonical_hash,
                     "applied_files": list(result.applied_files),
                     "changed_line_count": result.changed_line_count,
                     "before_hashes": result.before_hashes,
@@ -713,6 +737,8 @@ class RepositoryWorker(BaseWorker):
                 output_data={
                     "patch_id": result.patch_id,
                     "transaction_id": result.transaction_id,
+                    "provenance_id": patch_prov.provenance_id,
+                    "provenance_canonical_hash": patch_prov.canonical_hash,
                     "state": result.state.value,
                     "rolled_back": result.rolled_back,
                     "rollback_verified": result.rollback_verified,
@@ -742,6 +768,26 @@ class RepositoryWorker(BaseWorker):
         reason = args.get("reason", "Explicit revert requested")
         result = inspector.revert_patch(space_id=request.space_id, patch_id=patch_id)
 
+        # Build Provenance Record for the revert operation (PROVENANCE-001..003)
+        plan_ver = max(1, int(request.plan_version or 1))
+        revert_source_ident = SourceIdentity(
+            source_id=repo_ident.repository_id,
+            source_type="repository_revert",
+            locator=repo_ident.canonical_root,
+            space_id=request.space_id,
+        )
+        revert_hash = compute_sha256(f"revert:{patch_id}:{reason}".encode("utf-8"))
+        revert_prov = ProvenanceRecord(
+            provenance_id=f"prov-{request.task_id}-revert",
+            source_identity=revert_source_ident,
+            space_id=request.space_id,
+            task_id=request.task_id,
+            plan_version=plan_ver,
+            producer=self.worker_id,
+            content_hash=revert_hash,
+            transformation_stage=TransformationStage.RAW,
+        )
+
         artifacts: list[Artifact] = []
         if self.base_working_dir:
             art_dir = self.base_working_dir / "artifacts" / "repository"
@@ -749,6 +795,8 @@ class RepositoryWorker(BaseWorker):
             rb_dict = {
                 "patch_id": result.patch_id,
                 "transaction_id": result.transaction_id,
+                "provenance_id": revert_prov.provenance_id,
+                "provenance_canonical_hash": revert_prov.canonical_hash,
                 "rolled_back": result.rolled_back,
                 "rollback_verified": result.rollback_verified,
                 "restored_files": list(result.applied_files),
@@ -766,11 +814,15 @@ class RepositoryWorker(BaseWorker):
                     mime_type="application/json",
                     size_bytes=len(rb_json.encode("utf-8")),
                     sha256=compute_sha256(rb_json),
-                    metadata={"patch_id": patch_id, "rollback_verified": result.rollback_verified},
+                    metadata={
+                        "patch_id": patch_id,
+                        "rollback_verified": result.rollback_verified,
+                        "provenance_id": revert_prov.provenance_id,
+                    },
                 )
             )
 
-        plan_ver = int(request.plan_version or 0)
+        pulse_plan_ver = int(request.plan_version or 0)
         if result.success:
             pulse = Pulse(
                 type="repo.patch_reverted",
@@ -779,7 +831,7 @@ class RepositoryWorker(BaseWorker):
                     "target_files": list(result.applied_files),
                     "reason": reason,
                     "task_id": request.task_id,
-                    "plan_version": plan_ver,
+                    "plan_version": pulse_plan_ver,
                 },
                 space_id=request.space_id,
                 source=self.worker_id,
@@ -797,6 +849,8 @@ class RepositoryWorker(BaseWorker):
                 output_data={
                     "patch_id": result.patch_id,
                     "transaction_id": result.transaction_id,
+                    "provenance_id": revert_prov.provenance_id,
+                    "provenance_canonical_hash": revert_prov.canonical_hash,
                     "rolled_back": True,
                     "rollback_verified": True,
                     "restored_files": list(result.applied_files),

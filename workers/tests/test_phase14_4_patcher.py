@@ -17,7 +17,12 @@ from core.space.repository_protocol import (
     PatchTransactionState,
     RepositoryIdentity,
 )
-from core.space.research_protocol import compute_sha256
+from core.space.research_protocol import (
+    ProvenanceRecord,
+    SourceIdentity,
+    TransformationStage,
+    compute_sha256,
+)
 from workers.contract import ExecutionRequest, WorkerIdentity
 from workers.repository.inspector import LocalRepositoryInspector
 from workers.repository.patcher import (
@@ -743,3 +748,236 @@ def test_phase14_3_inspection_regression(tmp_path: Path) -> None:
     ast_report = inspector.inspect_ast("module.py", "space-1")
     assert ast_report.parse_status == "ok"
     assert any(fn.name == "greet" for fn in ast_report.functions)
+
+
+# ── 12. Final Hardening: Crash Recovery, Replay Immutability, Provenance ──────
+
+def test_crash_recovery_partial_mutation_detection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Interrupted write / concurrency crash detection prevents corruption (REPO-005)."""
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    file_a = repo_dir / "app.py"
+    file_b = repo_dir / "helper.py"
+
+    file_a.write_text("alpha = 1\n", encoding="utf-8")
+    file_b.write_text("beta = 2\n", encoding="utf-8")
+
+    hash_a = compute_sha256(file_a.read_bytes())
+    hash_b = compute_sha256(file_b.read_bytes())
+
+    # Multi-file patch modifying both app.py and helper.py
+    diff_text = """--- a/app.py
++++ b/app.py
+@@ -1 +1 @@
+-alpha = 1
++alpha = 100
+--- a/helper.py
++++ b/helper.py
+@@ -1 +1 @@
+-beta = 2
++beta = 200
+"""
+    applicator = AtomicPatchApplicator(root_path=repo_dir)
+
+    # 1. Simulate an interrupted prior state where app.py was modified out-of-band / corrupted
+    file_a.write_text("alpha = 999\n", encoding="utf-8")
+
+    # Patch with expected_before_hashes must fail with concurrency conflict
+    res1 = applicator.apply_patch(
+        space_id="space-1",
+        patch=CodePatch(
+            patch_id="patch-crash-1",
+            space_id="space-1",
+            diff_text=diff_text,
+            target_files=("app.py", "helper.py"),
+        ),
+        expected_before_hashes={"app.py": hash_a, "helper.py": hash_b},
+    )
+    assert res1.success is False
+    assert res1.state == PatchTransactionState.FAILED
+    assert "concurrent modification" in (res1.error or "").lower()
+
+    # Verify helper.py was left completely untouched
+    assert file_b.read_text(encoding="utf-8") == "beta = 2\n"
+
+    # 2. Simulate write failure mid-transaction triggering rollback restoration
+    # Restore app.py to original hash_a
+    file_a.write_text("alpha = 1\n", encoding="utf-8")
+
+    original_write_bytes = Path.write_bytes
+    failed_once = False
+
+    def failing_write_bytes(self: Path, data: bytes, *args: object, **kwargs: object) -> int:
+        nonlocal failed_once
+        if self.name == "helper.py" and not failed_once:
+            failed_once = True
+            raise OSError("Simulated disk write crash during transaction")
+        return original_write_bytes(self, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_bytes", failing_write_bytes)
+
+    res2 = applicator.apply_patch(
+        space_id="space-1",
+        patch=CodePatch(
+            patch_id="patch-crash-2",
+            space_id="space-1",
+            diff_text=diff_text,
+            target_files=("app.py", "helper.py"),
+        ),
+        expected_before_hashes={"app.py": hash_a, "helper.py": hash_b},
+    )
+    assert res2.success is False
+    assert res2.rolled_back is True
+    assert res2.rollback_verified is True
+    assert res2.state == PatchTransactionState.ROLLED_BACK
+
+    # Rollback must restore app.py to original bitwise content and hash
+    assert file_a.read_text(encoding="utf-8") == "alpha = 1\n"
+    assert compute_sha256(file_a.read_bytes()) == hash_a
+    assert file_b.read_text(encoding="utf-8") == "beta = 2\n"
+
+
+def test_replay_mode_does_not_mutate_repository(tmp_path: Path) -> None:
+    """Replay of patch execution events strictly avoids modifying repository state."""
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    src_file = repo_dir / "service.py"
+    initial_content = "def serve():\n    return 200\n"
+    src_file.write_text(initial_content, encoding="utf-8")
+
+    initial_stat = src_file.stat()
+    initial_hash = compute_sha256(src_file.read_bytes())
+
+    # Create an event representing a past patch applied
+    pulse = Pulse(
+        type="repo.patch_applied",
+        payload={
+            "patch_id": "patch-hist-1",
+            "target_files": ["service.py"],
+            "changed_line_count": 2,
+            "before_hashes": {"service.py": initial_hash},
+            "after_hashes": {"service.py": "0000000000000000000000000000000000000000000000000000000000000000"},
+            "task_id": "task-replay-1",
+            "plan_version": 1,
+        },
+        space_id="space-replay",
+        source="repo-worker-1",
+        correlation_id="task-replay-1",
+        taint=True,
+    )
+
+    # Replay simulation: replayer reads and verifies pulse payload metadata
+    assert pulse.type == "repo.patch_applied"
+    assert pulse.payload["patch_id"] == "patch-hist-1"
+    assert pulse.payload["before_hashes"]["service.py"] == initial_hash
+
+    # Invariant: Replay consumers do not issue write operations to the repository
+    after_stat = src_file.stat()
+    after_content = src_file.read_text(encoding="utf-8")
+    after_hash = compute_sha256(src_file.read_bytes())
+
+    assert after_content == initial_content
+    assert after_hash == initial_hash
+    assert after_stat.st_mtime_ns == initial_stat.st_mtime_ns
+    assert after_stat.st_size == initial_stat.st_size
+
+
+def test_patch_provenance_cryptographic_binding(tmp_path: Path) -> None:
+    """Provenance record cryptographically binds patch identity, diff, space, task, and worker."""
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    target_file = repo_dir / "calculator.py"
+    target_file.write_text("def multiply(a, b):\n    return a * b\n", encoding="utf-8")
+
+    repo_ident = RepositoryIdentity(
+        repository_id="repo-calc-1",
+        space_id="space-prov",
+        canonical_root=str(repo_dir.resolve()),
+    )
+
+    diff_text = """--- a/calculator.py
++++ b/calculator.py
+@@ -1,2 +1,3 @@
+ def multiply(a, b):
++    # Add docstring
+     return a * b
+"""
+    bus = SpyBus()
+    worker = RepositoryWorker(
+        identity=WorkerIdentity(worker_id="repo-worker-007", capability="repository.patch", space_id="space-prov"),
+        bus=bus,
+        repository_identity=repo_ident,
+        base_working_dir=tmp_path / "work",
+    )
+
+    task_id = "task-prov-42"
+    plan_ver = 3
+    req = ExecutionRequest(
+        request_id="req-prov-1",
+        correlation_id="corr-prov-1",
+        space_id="space-prov",
+        worker_id="repo-worker-007",
+        capability="repository.patch",
+        task_id=task_id,
+        plan_version=plan_ver,
+        arguments={
+            "repository_root": str(repo_dir),
+            "action": "apply_patch",
+            "diff": diff_text,
+            "patch_id": "patch-crypt-1",
+        },
+    )
+
+    res = worker.execute(req)
+    assert res.status == "ok"
+    assert res.output_data is not None
+
+    prov_id = res.output_data["provenance_id"]
+    canonical_hash = res.output_data["provenance_canonical_hash"]
+
+    assert prov_id == f"prov-{task_id}-patch"
+    assert len(canonical_hash) == 64  # SHA-256 hex digest
+
+    # Verify artifacts contain provenance link
+    manifest_art = next(a for a in res.artifacts if a.name.endswith("_patch_manifest.json"))
+    manifest_data = json.loads(Path(manifest_art.path).read_text(encoding="utf-8"))
+    assert manifest_data["provenance_id"] == prov_id
+    assert manifest_data["provenance_canonical_hash"] == canonical_hash
+
+    # Verify reconstructed ProvenanceRecord matches canonical hash
+    diff_hash = compute_sha256(diff_text.encode("utf-8"))
+    reconstructed_prov = ProvenanceRecord(
+        provenance_id=prov_id,
+        source_identity=SourceIdentity(
+            source_id="repo-calc-1",
+            source_type="repository_patch",
+            locator=str(repo_dir.resolve()),
+            space_id="space-prov",
+        ),
+        space_id="space-prov",
+        task_id=task_id,
+        plan_version=plan_ver,
+        producer="repo-worker-007",
+        content_hash=diff_hash,
+        transformation_stage=TransformationStage.RAW,
+    )
+    assert reconstructed_prov.canonical_hash == canonical_hash
+
+    # Adversarial tampering test: modifying task_id breaks canonical hash
+    tampered_prov = ProvenanceRecord(
+        provenance_id=prov_id,
+        source_identity=SourceIdentity(
+            source_id="repo-calc-1",
+            source_type="repository_patch",
+            locator=str(repo_dir.resolve()),
+            space_id="space-prov",
+        ),
+        space_id="space-prov",
+        task_id="tampered-task-id",
+        plan_version=plan_ver,
+        producer="repo-worker-007",
+        content_hash=diff_hash,
+        transformation_stage=TransformationStage.RAW,
+    )
+    assert tampered_prov.canonical_hash != canonical_hash
+

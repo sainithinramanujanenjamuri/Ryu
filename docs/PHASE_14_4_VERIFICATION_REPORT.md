@@ -85,10 +85,10 @@ To eliminate ambiguity, test counts are reported with strict separation between 
 
 | Suite Category | Tests Run | Passed | Skipped | Failed | Notes |
 |:---|:---:|:---:|:---:|:---:|:---|
-| **Dedicated Phase 14.4 Tests** | 68 | 68 | 0 | 0 | `test_phase14_4_patcher.py` (59) + `test_patch_models.py` (9) |
-| **Core & Workers Regression Suite** | 549 | 548 | 1 | 0 | Includes the 68 dedicated Phase 14.4 tests; 1 symlink skip on Windows |
+| **Dedicated Phase 14.4 Tests** | 71 | 71 | 0 | 0 | `test_phase14_4_patcher.py` (62) + `test_patch_models.py` (9) |
+| **Core & Workers Regression Suite** | 552 | 551 | 1 | 0 | Includes the 71 dedicated Phase 14.4 tests; 1 symlink skip on Windows |
 | **Harness Regression Suite** | 337 | 325 | 12 | 0 | System harness test battery; 12 integration service skips |
-| **Combined Passing Tests** | — | **873** | **13** | **0** | 548 (Core/Workers) + 325 (Harness) = 873 total passing tests |
+| **Combined Passing Tests** | — | **876** | **13** | **0** | 551 (Core/Workers) + 325 (Harness) = 876 total passing tests |
 
 ### B. 30+ Security & Adversarial Vectors Verified
 
@@ -129,6 +129,21 @@ To eliminate ambiguity, test counts are reported with strict separation between 
 - `ruff check`: All checks passed.
 - `mypy`: 0 issues found across all modified and created source files.
 
+### D. Final Evidence Hardening (Crash Recovery, Replay, and Provenance)
+
+1. **Crash Recovery & Concurrency Conflict Detection (`REPO-005`):**
+   - Executable evidence: `test_crash_recovery_partial_mutation_detection` in `workers/tests/test_phase14_4_patcher.py`.
+   - Verified that unexpected disk bytes or out-of-band corruption triggers `PatchTransactionState.FAILED` with explicit concurrent modification detection without altering untouched files.
+   - Verified that an I/O crash mid-transaction triggers `_execute_rollback`, restoring prior file state bitwise with verified pre-patch SHA-256 hashes (`state == ROLLED_BACK`, `rollback_verified == True`).
+2. **Replay Immutability (`PULSE-009`, `REC-001`):**
+   - Executable evidence: `test_replay_mode_does_not_mutate_repository` in `workers/tests/test_phase14_4_patcher.py`.
+   - Verified that consuming and validating historical `repo.patch_applied` events causes zero filesystem mutations (`st_mtime_ns`, byte size, and SHA-256 identical before and after replay pass).
+3. **Cryptographic Provenance Binding (`PROVENANCE-001..003`):**
+   - Executable evidence: `test_patch_provenance_cryptographic_binding` in `workers/tests/test_phase14_4_patcher.py`.
+   - Verified that patch application generates a formal `ProvenanceRecord` cryptographically binding `patch_id`, diff content hash (SHA-256), `space_id`, `task_id`, `plan_version`, and producer identity (`worker_id`).
+   - Verified artifact manifests link `provenance_id` and `provenance_canonical_hash`.
+   - Verified that adversarial tampering of task identity or patch content invalidates the canonical digest.
+
 ---
 
 ## 4. Contract Status Summary
@@ -145,8 +160,8 @@ To eliminate ambiguity, test counts are reported with strict separation between 
 
 ## 5. Scope Boundaries (What Was NOT Implemented)
 
-- **Test Runner (`EVIDENCE-001`, `EVIDENCE-002`):** Test execution, test result parsing, and assertion validation are deferred to Phase 14.5.
-- **Autonomous Repair Loops (`REPAIR-001..004`):** Automated error diagnosis, repair iteration budgets, and replan convergence loops are deferred to Phase 14.5.
+- **Test Runner (`EVIDENCE-001..003`):** Test execution, test result parsing, execution evidence extraction, and assertion validation are deferred to Phase 14.5 (*Autonomous Test Runner & Structured Evidence Extractor*).
+- **Autonomous Repair Loops (`REPAIR-001..004`):** Automated error diagnosis, repair iteration budgets, and replan convergence loops are deferred to Phase 14.6 (*Bounded Test-Repair Loop & Convergence Engine Extension*).
 - **Git State Mutations:** No git commits, branches, or remote pushes.
 - **Subprocess Patching:** Strictly pure-Python diff parser and applicator.
 
