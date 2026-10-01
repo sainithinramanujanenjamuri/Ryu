@@ -19,7 +19,6 @@ from core.space.repository_protocol import (
     FileCategory,
     PathTraversalError,
     RepositoryRootInvalidError,
-    SecretAccessDeniedError,
     SymlinkSecurityError,
 )
 

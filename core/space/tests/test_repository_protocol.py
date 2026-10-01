@@ -9,9 +9,11 @@ import pytest
 from core.space.repository_protocol import (
     ASTInspectionReport,
     ASTNodeSummary,
+    CodePatch,
     FileAccessPolicy,
     FileCategory,
     FileMetadata,
+    PatchResult,
     ProjectMetadata,
     RepositoryIdentity,
     RepositoryInspectionResult,
@@ -179,6 +181,17 @@ class MockRepository:
 
     def discover_tests(self, space_id: str) -> list[str]:
         return ["tests/test_mock.py"]
+
+    def apply_patch(
+        self,
+        space_id: str,
+        patch: CodePatch,
+        expected_before_hashes: dict[str, str] | None = None,
+    ) -> PatchResult:
+        return PatchResult(patch.patch_id, "mock-tx", True)
+
+    def revert_patch(self, space_id: str, patch_id: str) -> PatchResult:
+        return PatchResult(patch_id, "mock-tx", True, rolled_back=True)
 
 
 def test_runtime_checkable_protocols() -> None:

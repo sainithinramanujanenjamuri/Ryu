@@ -22,16 +22,20 @@ from pathlib import Path
 from typing import Any
 
 from ryu.pulse_bus.bus import PulseBus
+from ryu.pulse_bus.pulse import Pulse, Severity
 
 from core.resources.manager import ResourceManager
-from core.space.research_protocol import (
-    ProvenanceRecord,
-    SourceIdentity,
-    TransformationStage,
-    compute_sha256,
-)
 from core.space.repository_protocol import (
+    CodePatch,
     FileTooLargeError,
+    PatchBoundsExceededError,
+    PatchConflictError,
+    PatchContextMismatchError,
+    PatchError,
+    PatchRollbackError,
+    PatchSyntaxError,
+    PatchTargetInvalidError,
+    PatchVerificationError,
     PathTraversalError,
     RepositoryError,
     RepositoryIdentity,
@@ -42,6 +46,12 @@ from core.space.repository_protocol import (
     RepositoryRootInvalidError,
     SecretAccessDeniedError,
     SymlinkSecurityError,
+)
+from core.space.research_protocol import (
+    ProvenanceRecord,
+    SourceIdentity,
+    TransformationStage,
+    compute_sha256,
 )
 from workers.base import BaseWorker, sanitize_text
 from workers.contract import (
@@ -143,9 +153,43 @@ class RepositoryWorker(BaseWorker):
                 metrics=ExecutionMetrics(),
             )
 
-        # 2. Dispatch requested inspection action
+        # Check capability permissions: inspection capability cannot perform modification
+        is_modification_action = action in ("apply_patch", "patch", "revert_patch", "revert", "rollback")
+        worker_cap = self.identity.capability
+        req_cap = request.capability
+
+        def _is_write_authorized(cap: str) -> bool:
+            return cap in ("repository.patch", "repo.patch", "repository.*", "repo.*", "repository", "repo")
+
+        if is_modification_action and not (_is_write_authorized(worker_cap) or _is_write_authorized(req_cap)):
+            err = ExecutionError(
+                error_class="terminal.permission_denied",
+                message=f"Capability '{worker_cap}' is inspection-only and not authorized to modify code (action '{action}')",
+                recoverable=False,
+            )
+            return ExecutionResult(
+                request_id=request.request_id,
+                status="denied",
+                error=err,
+                metrics=ExecutionMetrics(),
+            )
+
+        if repo_ident.space_id != request.space_id:
+            err = ExecutionError(
+                error_class="terminal.permission_denied",
+                message=f"Repository '{repo_ident.repository_id}' is authorized for space '{repo_ident.space_id}', not authorized for worker space '{request.space_id}'",
+                recoverable=False,
+            )
+            return ExecutionResult(
+                request_id=request.request_id,
+                status="denied",
+                error=err,
+                metrics=ExecutionMetrics(),
+            )
+
+        # 2. Dispatch requested action
         try:
-            if action == "inspect_tree" or action == "snapshot":
+            if action in ("inspect_tree", "snapshot"):
                 return self._handle_inspect_tree(request, inspector, repo_ident, args)
             elif action == "read_file":
                 return self._handle_read_file(request, inspector, repo_ident, args)
@@ -153,10 +197,14 @@ class RepositoryWorker(BaseWorker):
                 return self._handle_inspect_ast(request, inspector, repo_ident, args)
             elif action == "discover_tests":
                 return self._handle_discover_tests(request, inspector, repo_ident, args)
+            elif action in ("apply_patch", "patch"):
+                return self._handle_apply_patch(request, inspector, repo_ident, args)
+            elif action in ("revert_patch", "revert", "rollback"):
+                return self._handle_revert_patch(request, inspector, repo_ident, args)
             else:
                 err = ExecutionError(
                     error_class="terminal.invalid_params",
-                    message=f"Unknown repository inspection action: '{action}'",
+                    message=f"Unknown repository action: '{action}'",
                     recoverable=False,
                 )
                 return ExecutionResult(
@@ -166,10 +214,46 @@ class RepositoryWorker(BaseWorker):
                     metrics=ExecutionMetrics(),
                 )
 
-        except PathTraversalError as exc:
+        except PatchBoundsExceededError as exc:
+            err = ExecutionError(
+                error_class="terminal.resource_limit",
+                message=sanitize_text(f"Patch bounds ceiling exceeded: {exc}"),
+                recoverable=False,
+            )
+            return ExecutionResult(
+                request_id=request.request_id,
+                status="failed",
+                error=err,
+                metrics=ExecutionMetrics(),
+            )
+        except (PatchSyntaxError, PatchContextMismatchError) as exc:
+            err = ExecutionError(
+                error_class="terminal.invalid_params",
+                message=sanitize_text(f"Patch syntax or context mismatch error: {exc}"),
+                recoverable=False,
+            )
+            return ExecutionResult(
+                request_id=request.request_id,
+                status="failed",
+                error=err,
+                metrics=ExecutionMetrics(),
+            )
+        except PatchConflictError as exc:
+            err = ExecutionError(
+                error_class="transient.conflict",
+                message=sanitize_text(f"Concurrent patch conflict: {exc}"),
+                recoverable=True,
+            )
+            return ExecutionResult(
+                request_id=request.request_id,
+                status="failed",
+                error=err,
+                metrics=ExecutionMetrics(),
+            )
+        except (PatchTargetInvalidError, PathTraversalError) as exc:
             err = ExecutionError(
                 error_class="terminal.security_violation",
-                message=sanitize_text(f"Path traversal detected: {exc}"),
+                message=sanitize_text(f"Target invalid or traversal detected: {exc}"),
                 recoverable=False,
             )
             return ExecutionResult(
@@ -214,7 +298,7 @@ class RepositoryWorker(BaseWorker):
                 error=err,
                 metrics=ExecutionMetrics(),
             )
-        except (FileNotFoundError, RepositoryError, Exception) as exc:
+        except (FileNotFoundError, RepositoryError, PatchError, PatchVerificationError, PatchRollbackError, Exception) as exc:
             err = ExecutionError(
                 error_class="terminal.not_found" if isinstance(exc, FileNotFoundError) else "transient.io",
                 message=sanitize_text(str(exc)),
@@ -428,3 +512,319 @@ class RepositoryWorker(BaseWorker):
             metrics=ExecutionMetrics(),
             logs=[f"Discovered {len(tests)} test files"],
         )
+
+    def _handle_apply_patch(
+        self,
+        request: ExecutionRequest,
+        inspector: LocalRepositoryInspector,
+        repo_ident: RepositoryIdentity,
+        args: dict[str, Any],
+    ) -> ExecutionResult:
+        diff_text = args.get("diff_text") or args.get("patch") or args.get("diff")
+        if not diff_text or not isinstance(diff_text, str) or not diff_text.strip():
+            err = ExecutionError(
+                error_class="terminal.invalid_params",
+                message="apply_patch action requires non-empty 'diff_text'",
+                recoverable=False,
+            )
+            return ExecutionResult(request_id=request.request_id, status="failed", error=err)
+
+        patch_id = args.get("patch_id") or f"patch-{request.task_id}"
+        author = args.get("author") or self.worker_id
+        expected_before_hashes = args.get("expected_before_hashes") or args.get("before_hashes")
+        if expected_before_hashes and not isinstance(expected_before_hashes, dict):
+            expected_before_hashes = None
+
+        code_patch = CodePatch(
+            patch_id=patch_id,
+            target_files=(),
+            diff_text=diff_text,
+            author=author,
+            space_id=request.space_id,
+            before_hashes=expected_before_hashes or {},
+        )
+
+        result = inspector.apply_patch(
+            space_id=request.space_id,
+            patch=code_patch,
+            expected_before_hashes=expected_before_hashes,
+        )
+
+        artifacts: list[Artifact] = []
+        if self.base_working_dir:
+            art_dir = self.base_working_dir / "artifacts" / "repository"
+            art_dir.mkdir(parents=True, exist_ok=True)
+
+            # 1. Raw diff artifact
+            diff_path = art_dir / f"{request.task_id}_patch.diff"
+            diff_bytes = diff_text.encode("utf-8")
+            diff_path.write_bytes(diff_bytes)
+            artifacts.append(
+                Artifact(
+                    artifact_id=f"art-{request.task_id}-patch-diff",
+                    name=f"{request.task_id}_patch.diff",
+                    path=str(diff_path),
+                    mime_type="text/x-diff",
+                    size_bytes=len(diff_bytes),
+                    sha256=compute_sha256(diff_bytes),
+                    metadata={"patch_id": patch_id},
+                )
+            )
+
+            # 2. Patch manifest artifact
+            manifest_dict = {
+                "patch_id": result.patch_id,
+                "transaction_id": result.transaction_id,
+                "success": result.success,
+                "state": result.state.value,
+                "applied_files": list(result.applied_files),
+                "changed_line_count": result.changed_line_count,
+                "before_hashes": result.before_hashes,
+                "after_hashes": result.after_hashes,
+                "rolled_back": result.rolled_back,
+                "rollback_verified": result.rollback_verified,
+                "error": result.error,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            manifest_path = art_dir / f"{request.task_id}_patch_manifest.json"
+            manifest_json = json.dumps(manifest_dict, indent=2)
+            manifest_path.write_text(manifest_json, encoding="utf-8")
+            artifacts.append(
+                Artifact(
+                    artifact_id=f"art-{request.task_id}-patch-manifest",
+                    name=f"{request.task_id}_patch_manifest.json",
+                    path=str(manifest_path),
+                    mime_type="application/json",
+                    size_bytes=len(manifest_json.encode("utf-8")),
+                    sha256=compute_sha256(manifest_json),
+                    metadata={"patch_id": patch_id, "state": result.state.value},
+                )
+            )
+
+            # 3. Rollback manifest artifact if rolled back
+            if result.rolled_back:
+                rb_dict = {
+                    "patch_id": result.patch_id,
+                    "transaction_id": result.transaction_id,
+                    "rolled_back": result.rolled_back,
+                    "rollback_verified": result.rollback_verified,
+                    "restored_files": list(result.applied_files),
+                    "reason": result.error or "Automatic rollback triggered by patch verification failure",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                rb_path = art_dir / f"{request.task_id}_rollback_manifest.json"
+                rb_json = json.dumps(rb_dict, indent=2)
+                rb_path.write_text(rb_json, encoding="utf-8")
+                artifacts.append(
+                    Artifact(
+                        artifact_id=f"art-{request.task_id}-rollback-manifest",
+                        name=f"{request.task_id}_rollback_manifest.json",
+                        path=str(rb_path),
+                        mime_type="application/json",
+                        size_bytes=len(rb_json.encode("utf-8")),
+                        sha256=compute_sha256(rb_json),
+                        metadata={"patch_id": patch_id, "rollback_verified": result.rollback_verified},
+                    )
+                )
+
+        # Pulse emissions
+        plan_ver = int(request.plan_version or 0)
+        if result.success:
+            pulse = Pulse(
+                type="repo.patch_applied",
+                payload={
+                    "patch_id": result.patch_id,
+                    "target_files": list(result.applied_files),
+                    "changed_line_count": result.changed_line_count,
+                    "before_hashes": result.before_hashes,
+                    "after_hashes": result.after_hashes,
+                    "task_id": request.task_id,
+                    "plan_version": plan_ver,
+                },
+                space_id=request.space_id,
+                source=self.worker_id,
+                correlation_id=request.correlation_id or request.task_id,
+                severity=Severity.INFO,
+                taint=True,
+            )
+            if self.bus:
+                self.bus.publish(pulse)
+
+            return ExecutionResult(
+                request_id=request.request_id,
+                status="ok",
+                artifacts=artifacts,
+                output_data={
+                    "patch_id": result.patch_id,
+                    "transaction_id": result.transaction_id,
+                    "applied_files": list(result.applied_files),
+                    "changed_line_count": result.changed_line_count,
+                    "before_hashes": result.before_hashes,
+                    "after_hashes": result.after_hashes,
+                    "state": result.state.value,
+                    "taint": True,
+                },
+                taint=True,
+                metrics=ExecutionMetrics(),
+                logs=[
+                    f"Applied patch '{result.patch_id}' across {len(result.applied_files)} files ({result.changed_line_count} changed lines)"
+                ],
+            )
+        else:
+            if result.rolled_back:
+                # Emit repo.patch_reverted on rollback
+                pulse = Pulse(
+                    type="repo.patch_reverted",
+                    payload={
+                        "patch_id": result.patch_id,
+                        "target_files": list(result.applied_files),
+                        "reason": result.error or "Patch verification failed; rolled back",
+                        "task_id": request.task_id,
+                        "plan_version": plan_ver,
+                    },
+                    space_id=request.space_id,
+                    source=self.worker_id,
+                    correlation_id=request.correlation_id or request.task_id,
+                    severity=Severity.WARNING,
+                    taint=True,
+                )
+                if self.bus:
+                    self.bus.publish(pulse)
+
+            error_cls = "terminal.invalid_params"
+            err_msg_lower = (result.error or "").lower()
+            if "bounds" in err_msg_lower or "ceiling" in err_msg_lower:
+                error_cls = "terminal.resource_limit"
+            elif "traversal" in err_msg_lower or "sensitive" in err_msg_lower or "denied" in err_msg_lower:
+                error_cls = "terminal.security_violation"
+            elif "conflict" in err_msg_lower:
+                error_cls = "transient.conflict"
+
+            err = ExecutionError(
+                error_class=error_cls,
+                message=sanitize_text(result.error or "Patch application failed"),
+                recoverable=False,
+            )
+            return ExecutionResult(
+                request_id=request.request_id,
+                status="failed",
+                artifacts=artifacts,
+                error=err,
+                output_data={
+                    "patch_id": result.patch_id,
+                    "transaction_id": result.transaction_id,
+                    "state": result.state.value,
+                    "rolled_back": result.rolled_back,
+                    "rollback_verified": result.rollback_verified,
+                    "taint": True,
+                },
+                taint=True,
+                metrics=ExecutionMetrics(),
+                logs=[f"Patch '{result.patch_id}' failed: {result.error}"],
+            )
+
+    def _handle_revert_patch(
+        self,
+        request: ExecutionRequest,
+        inspector: LocalRepositoryInspector,
+        repo_ident: RepositoryIdentity,
+        args: dict[str, Any],
+    ) -> ExecutionResult:
+        patch_id = args.get("patch_id")
+        if not patch_id:
+            err = ExecutionError(
+                error_class="terminal.invalid_params",
+                message="revert_patch action requires 'patch_id'",
+                recoverable=False,
+            )
+            return ExecutionResult(request_id=request.request_id, status="failed", error=err)
+
+        reason = args.get("reason", "Explicit revert requested")
+        result = inspector.revert_patch(space_id=request.space_id, patch_id=patch_id)
+
+        artifacts: list[Artifact] = []
+        if self.base_working_dir:
+            art_dir = self.base_working_dir / "artifacts" / "repository"
+            art_dir.mkdir(parents=True, exist_ok=True)
+            rb_dict = {
+                "patch_id": result.patch_id,
+                "transaction_id": result.transaction_id,
+                "rolled_back": result.rolled_back,
+                "rollback_verified": result.rollback_verified,
+                "restored_files": list(result.applied_files),
+                "reason": reason,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            rb_path = art_dir / f"{request.task_id}_rollback_manifest.json"
+            rb_json = json.dumps(rb_dict, indent=2)
+            rb_path.write_text(rb_json, encoding="utf-8")
+            artifacts.append(
+                Artifact(
+                    artifact_id=f"art-{request.task_id}-rollback-manifest",
+                    name=f"{request.task_id}_rollback_manifest.json",
+                    path=str(rb_path),
+                    mime_type="application/json",
+                    size_bytes=len(rb_json.encode("utf-8")),
+                    sha256=compute_sha256(rb_json),
+                    metadata={"patch_id": patch_id, "rollback_verified": result.rollback_verified},
+                )
+            )
+
+        plan_ver = int(request.plan_version or 0)
+        if result.success:
+            pulse = Pulse(
+                type="repo.patch_reverted",
+                payload={
+                    "patch_id": result.patch_id,
+                    "target_files": list(result.applied_files),
+                    "reason": reason,
+                    "task_id": request.task_id,
+                    "plan_version": plan_ver,
+                },
+                space_id=request.space_id,
+                source=self.worker_id,
+                correlation_id=request.correlation_id or request.task_id,
+                severity=Severity.INFO,
+                taint=True,
+            )
+            if self.bus:
+                self.bus.publish(pulse)
+
+            return ExecutionResult(
+                request_id=request.request_id,
+                status="ok",
+                artifacts=artifacts,
+                output_data={
+                    "patch_id": result.patch_id,
+                    "transaction_id": result.transaction_id,
+                    "rolled_back": True,
+                    "rollback_verified": True,
+                    "restored_files": list(result.applied_files),
+                    "state": result.state.value,
+                    "taint": True,
+                },
+                taint=True,
+                metrics=ExecutionMetrics(),
+                logs=[f"Successfully reverted patch '{patch_id}' ({len(result.applied_files)} files restored)"],
+            )
+        else:
+            err = ExecutionError(
+                error_class="transient.io",
+                message=sanitize_text(result.error or "Patch revert failed"),
+                recoverable=False,
+            )
+            return ExecutionResult(
+                request_id=request.request_id,
+                status="failed",
+                error=err,
+                output_data={
+                    "patch_id": result.patch_id,
+                    "rolled_back": False,
+                    "state": result.state.value,
+                    "taint": True,
+                },
+                taint=True,
+                metrics=ExecutionMetrics(),
+                logs=[f"Failed to revert patch '{patch_id}': {result.error}"],
+            )
+

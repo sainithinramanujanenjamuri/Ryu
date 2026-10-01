@@ -19,10 +19,12 @@ from pathlib import Path
 from core.space.repository_protocol import (
     ASTInspectionReport,
     ASTNodeSummary,
+    CodePatch,
     FileAccessPolicy,
     FileCategory,
     FileMetadata,
     FileTooLargeError,
+    PatchResult,
     ProjectMetadata,
     RepositoryIdentity,
     RepositoryLimitExceededError,
@@ -62,6 +64,8 @@ class LocalRepositoryInspector(RepositoryProtocol):
         self.max_total_bytes = max_total_bytes
         self.max_files = max_files
         self.max_depth = max_depth
+        from workers.repository.patcher import AtomicPatchApplicator
+        self._applicator = AtomicPatchApplicator(root_path=self.root_path, allow_symlinks=self.allow_symlinks)
 
     def identify_repository(self, space_id: str = "default-space") -> RepositoryIdentity:
         """Return the immutable identity of the authorized repository."""
@@ -331,3 +335,21 @@ class LocalRepositoryInspector(RepositoryProtocol):
             dependencies=[],
             test_framework=test_framework,
         )
+
+    def apply_patch(
+        self,
+        space_id: str,
+        patch: CodePatch,
+        expected_before_hashes: dict[str, str] | None = None,
+    ) -> PatchResult:
+        """Apply an atomic unified diff patch with pre/post hash verification (REPO-002, REPO-005)."""
+        return self._applicator.apply_patch(space_id, patch, expected_before_hashes=expected_before_hashes)
+
+    def revert_patch(
+        self,
+        space_id: str,
+        patch_id: str,
+    ) -> PatchResult:
+        """Revert a previously applied patch back to exact prior state with hash verification (REPO-005)."""
+        return self._applicator.revert_patch(space_id, patch_id)
+
