@@ -39,6 +39,7 @@ from workers.repository.worker import RepositoryWorker
 from workers.research.worker import ResearchWorker
 from workers.shell.worker import ShellWorker
 from workers.subagent.worker import SubagentWorker
+from workers.test_runner.worker import TestRunnerWorker
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +154,18 @@ class RuntimeWorkerInvoker:
             return RepositoryWorker(
                 identity=WorkerIdentity(
                     worker_id=f"repository-worker-{space_id}",
+                    capability=capability,
+                    space_id=space_id,
+                ),
+                bus=self.bus,
+                resource_manager=self.resource_manager,
+                base_working_dir=self.base_working_dir,
+            )
+
+        if capability.startswith("test.") or capability == "test" or capability.startswith("test_runner."):
+            return TestRunnerWorker(
+                identity=WorkerIdentity(
+                    worker_id=f"test-runner-worker-{space_id}",
                     capability=capability,
                     space_id=space_id,
                 ),
