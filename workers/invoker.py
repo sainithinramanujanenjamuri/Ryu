@@ -35,6 +35,7 @@ from workers.contract import (
 from workers.file.worker import FileWorker
 from workers.node.worker import NodeWorker
 from workers.python.worker import PythonWorker
+from workers.research.worker import ResearchWorker
 from workers.shell.worker import ShellWorker
 from workers.subagent.worker import SubagentWorker
 
@@ -133,6 +134,18 @@ class RuntimeWorkerInvoker:
                 ),
                 bus=self.bus,
                 resource_manager=self.resource_manager,
+            )
+
+        if capability.startswith("research.") or capability == "research":
+            return ResearchWorker(
+                identity=WorkerIdentity(
+                    worker_id=f"research-worker-{space_id}",
+                    capability=capability,
+                    space_id=space_id,
+                ),
+                bus=self.bus,
+                resource_manager=self.resource_manager,
+                base_working_dir=self.base_working_dir,
             )
 
         if capability.startswith("node."):

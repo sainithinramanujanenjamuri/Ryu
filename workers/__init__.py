@@ -28,6 +28,7 @@ from workers.file.worker import FileWorker
 from workers.invoker import RuntimeWorkerInvoker
 from workers.node.worker import NodeWorker
 from workers.python.worker import PythonWorker
+from workers.research.worker import ResearchWorker
 from workers.shell.worker import ShellWorker
 from workers.subagent.worker import SubagentWorker
 
@@ -46,6 +47,7 @@ __all__ = [
     "NetworkPolicyMode",
     "NodeWorker",
     "PythonWorker",
+    "ResearchWorker",
     "RuntimeWorkerInvoker",
     "SandboxPolicy",
     "ShellWorker",
