@@ -13,7 +13,7 @@
 ## 1. Executive Summary
 
 Phase 14.3 implements the capability-controlled `RepositoryWorker` and local repository inspection subsystem under strict SCCA governance.
-This phase is **INSPECTION-ONLY**. The worker performs deterministic repository inventorying, file classification, cryptographic content hashing, and non-executing static AST analysis while strictly prohibiting file modifications, patch applications, test executions, git commands, and subprocess spawning.
+This phase is **INSPECTION-ONLY**. The worker performs deterministic repository inventorying, file classification, cryptographic content hashing, and **Python static AST parsing** (via `ast.parse`), paired with separate **polyglot test discovery**. Phase 14.3 strictly prohibits file modifications, patch applications, test executions, git commands, and subprocess spawning.
 
 Repository execution is subordinate to the existing runtime architecture:
 
@@ -69,8 +69,8 @@ Task Completion & DAG Unblocking
    - Deterministic traversal with global lexicographical relative path sorting.
    - Resource ceilings: max files, max total bytes, max depth, max per-file size.
    - Cryptographic SHA-256 content hashing.
-   - Static, non-executing AST parsing for Python source files using `ast.parse` (zero code execution, zero imports).
-   - Test discovery (`pytest` and polyglot naming conventions).
+   - **Python static AST parsing**: non-executing AST analysis for `.py` source files using standard library `ast.parse` (extracts classes, functions, line numbers, docstrings without executing code or importing modules; non-Python files return `parse_status="unsupported_language"`).
+   - **Polyglot test discovery**: passive pattern matching across pytest, jest/mocha, cargo test, and go test file naming conventions.
    - Passive project metadata discovery (`pyproject.toml`, `package.json`, `Cargo.toml`).
 
 5. `workers/repository/worker.py` (436 lines):
@@ -87,8 +87,8 @@ Task Completion & DAG Unblocking
      - Path traversal & security checks (null bytes, `../`, drive escapes, UNC paths, symlink escapes).
      - File policy & secret masking.
      - Deterministic traversal and hashing.
-     - AST extraction without execution & syntax error handling.
-     - Test and project metadata discovery.
+     - Python AST extraction without execution & syntax error handling.
+     - Polyglot test and project metadata discovery.
      - Prompt injection inertness & taint preservation.
      - Cross-space isolation.
      - Byte-for-byte read-only / no-modification invariant verification.
@@ -107,7 +107,7 @@ Task Completion & DAG Unblocking
 2. `workers/__init__.py`:
    - Exported `RepositoryWorker`.
 3. `core/pulse_bus/tests/test_registry.py`:
-   - Updated expected registry count to 50 (reflecting ADR-0044 research/SE pulse types).
+   - Updated expected registry count to 50 types (accounting for Phase 14 research/SE additions in `pulse-types.json`).
 4. `docs/CONTRACT_MATRIX.md`:
    - Updated `REPO-001` status from `CONTRACT_ONLY` to `INTEGRATION_VERIFIED`.
 
@@ -123,15 +123,23 @@ Task Completion & DAG Unblocking
 | **Law 6: Deterministic Containment** | Failures contained, mapped to standard failure taxonomy, never swallowed. | Exceptions map to `terminal.invalid_params`, `terminal.permission_denied`, `terminal.resource_limit`, `terminal.not_found`. | `test_safe_path_blocks_traversal_escape`, `test_inspector_bounds_enforcement` |
 | **AGENTS.md §7: Core Independence** | `core/` contains no imports of `workers/`, `agents/`, `llm/`, `channels/`, or Git SDKs. | `core/space/repository_protocol.py` relies strictly on standard library dataclasses, enums, typing. | `scripts/dep_guard.py` PASS (0 violations) |
 | **TAINT-001: Mandatory Taint** | External repository source code and docstrings enter with `taint: True`. | `RepositoryWorker` unconditionally sets `taint: True` on all output data and artifacts. | `test_prompt_injection_remains_inert_and_tainted`, `test_full_pipeline_repository_inspection` |
-| **WORKER-002: Passive Data** | Repository files, comments, and READMEs are strictly passive data; zero commands run. | AST inspection uses non-executing `ast.parse`; no subprocesses or system commands invoked. | `test_prompt_injection_remains_inert_and_tainted` (`process_count == 0`) |
+| **WORKER-002: Passive Data** | Repository files, comments, and READMEs are strictly passive data; zero commands run. | Python AST inspection uses non-executing `ast.parse`; no subprocesses or system commands invoked. | `test_prompt_injection_remains_inert_and_tainted` (`process_count == 0`) |
 
 ---
 
 ## 4. Contract Traceability
 
+> [!IMPORTANT]
+> **REPO-001 is the ONLY repository contract integrated and verified in Phase 14.3.**  
+> Contracts **REPO-002 through REPO-005** govern code mutation, atomic patching, line ceilings, and hash reversibility; they remain in `CONTRACT_ONLY` status and belong to **Phase 14.4**.
+
 | Contract ID | Invariant | Implementation Boundary | Test Proof | Status |
 | :--- | :--- | :--- | :--- | :--- |
 | **REPO-001** | Repository Inspection Workspace Scoping | `core/space/repository_protocol.py`, `workers/repository/` | `workers/tests/test_phase14_3_repository_worker.py` | `INTEGRATION_VERIFIED` |
+| **REPO-002** | Atomic Code Patch Application | `core/space/repository_protocol.py`, `workers/repository/patcher.py` | (Deferred to Phase 14.4) | `CONTRACT_ONLY` |
+| **REPO-003** | Sensitive Path Modification Denylist | `core/space/repository_protocol.py`, `workers/repository/patcher.py` | (Deferred to Phase 14.4) | `CONTRACT_ONLY` |
+| **REPO-004** | Patch Size & File Count Ceilings | `core/space/repository_protocol.py`, `workers/repository/patcher.py` | (Deferred to Phase 14.4) | `CONTRACT_ONLY` |
+| **REPO-005** | Reversible Code Modification & Hash Verification | `core/space/repository_protocol.py`, `workers/repository/patcher.py` | (Deferred to Phase 14.4) | `CONTRACT_ONLY` |
 | **PROVENANCE-001** | Transformation Chain Auditability | `core/space/research_protocol.py`, `workers/repository/worker.py` | `test_full_pipeline_repository_inspection` | `INTEGRATION_VERIFIED` |
 | **PROVENANCE-002** | Research & Artifact Source Immutability | `workers/repository/inspector.py`, `workers/repository/worker.py` | `test_inspector_deterministic_walk_and_hashing`, `test_full_pipeline_repository_inspection` | `INTEGRATION_VERIFIED` |
 | **PROVENANCE-003** | Cross-Space Provenance Isolation | `core/space/repository_protocol.py`, `workers/repository/worker.py` | `test_cross_space_denial_on_worker`, `test_cross_space_denial_on_repository_authorization` | `INTEGRATION_VERIFIED` |
@@ -183,17 +191,18 @@ To prove that Phase 14.3 is strictly read-only and causes zero file alterations:
 ======================================================================
 RYU AI VERIFICATION METRICS SUMMARY — PHASE 14.3
 ======================================================================
-Repository Protocol Unit Tests:       10 passed
-Repository Worker & Security Tests:   18 passed, 1 skipped (symlinks on Windows)
-Full Core & Workers Regression:       480 passed, 1 skipped
-Harness Regression Suite:             325 passed, 12 skipped
-Total Passing Tests:                  805 passed
-Forbidden Core Imports:               0 (scripts/dep_guard.py PASS)
-Pulse Registry & Codegen Sync:        50/50 types (scripts/contract_sync.py PASS)
-V1-005 Governance Audit:              PASS
-V1-001 Spec Coverage Audit:           PASS (224 contract IDs covered)
-Ruff Linter:                          0 errors (100% clean)
-Mypy Type Checker:                    0 issues across all 8 checked files
+Dedicated Phase 14.3 Tests:           28 passed, 1 skipped (0 failures)
+  - Repository Protocol Unit Tests:   10 passed
+  - Repository Worker & Security:     18 passed, 1 skipped (symlinks on Windows)
+Regression Suites:                    805 passed, 13 skipped (0 failures)
+  - Core & Workers Regression:        480 passed, 1 skipped (contains dedicated 14.3 tests)
+  - Harness Regression Suite:         325 passed, 12 skipped
+Deterministic Core Independence:      PASS (0 forbidden imports in core/ via scripts/dep_guard.py)
+Pulse Registry & Codegen Sync:        PASS (50 types in registry, 38 Sec 16 arch types via scripts/contract_sync.py)
+V1-005 Governance Audit:              PASS (ADRs 0001..0044, codegen sync, schemas, matrix integrity)
+V1-001 Spec Coverage Audit:           PASS (224 contract IDs covered, 0 orphans)
+Ruff Linter:                          PASS (0 errors, 100% clean)
+Mypy Type Checker:                    PASS (0 issues across all 8 checked files)
 ======================================================================
 ```
 
@@ -205,6 +214,7 @@ The following capabilities were explicitly deferred to future phases:
 - **Phase 14.4**: Atomic code patching, unified diff application, hash-verified reversibility, and line count ceilings (`REPO-002..005`).
 - **Phase 14.5**: Test runner sandboxing, execution evidence verification, test-repair loop, and replan deduction (`EVIDENCE-001..003`, `REPAIR-001..004`).
 - **Phase 14.6**: Vector store integration, code embeddings, and semantic repository indexing.
+- **General-Purpose Polyglot AST Analysis**: Phase 14.3 implements non-executing AST analysis for Python (`ast.parse`) and separate polyglot test file discovery. Full multi-language AST/semantic parsing is deferred.
 - **Git Operations**: Git commits, branch creation, worktrees, or remote pushes.
 - **Package Management**: Pip/npm/cargo installs or environment modifications.
 
