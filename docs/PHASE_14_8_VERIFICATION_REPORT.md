@@ -13,7 +13,7 @@
 
 Phase 14.8 implements the integrated autonomous software engineering workflow (`workflows/software_engineering.py`) connecting all prior Phase 14 foundations (Phase 14.2 Research Retrieval, Phase 14.3 Repository Inspection, Phase 14.4 Atomic Patch Application, Phase 14.5 Sandboxed Test Runner, Phase 14.6 Bounded Test-Repair Loop, Phase 14.7 Research Synthesis) into an auditable closed-loop workflow.
 
-All 39 dedicated verification tests in `workflows/tests/test_phase14_8_software_engineering_workflow.py` pass cleanly. Full regression across existing Phase 14 suites demonstrates zero regressions (125 tests passed). Automated governance, dependency boundary (`scripts/dep_guard.py`), contract synchronization (`scripts/contract_sync.py`), linter (`ruff`), and type-checker (`mypy`) gates all pass with zero defects.
+All 39 dedicated verification tests in `workflows/tests/test_phase14_8_software_engineering_workflow.py` pass cleanly. Full regression across existing Phase 14 suites demonstrates zero regressions (125 tests passed). All executed Phase 14.8 governance, dependency, lint, and type-check gates passed with no reported violations.
 
 **Phase Gate Status:** **GATE-14.8: PASS**
 
