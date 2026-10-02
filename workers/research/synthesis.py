@@ -53,7 +53,11 @@ logger = logging.getLogger(__name__)
 # Prompt injection signatures to neutralize and treat strictly as passive data
 _INJECTION_PATTERNS = [
     re.compile(r"(?i)\bignore\s+(?:all\s+)?(?:previous|prior)\s+instructions\b"),
-    re.compile(r"(?i)\bexecute\s+(?:shell|command|bash|powershell|rm|del)\b"),
+    re.compile(r"(?i)\byou\s+are\s+now\s+(?:the\s+)?administrator\b"),
+    re.compile(r"(?i)\bexecute\s+(?:shell|command|bash|powershell|rm|del|this\s+command)\b"),
+    re.compile(r"(?i)\bmodify\s+(?:the\s+)?repository\b"),
+    re.compile(r"(?i)\bapprove\s+this\s+plan\b"),
+    re.compile(r"(?i)\bmark\s+this\s+evidence\s+as\s+verified\b"),
     re.compile(r"(?i)\bchange\s+the\s+plan\b"),
     re.compile(r"(?i)\breveal\s+(?:all\s+)?(?:secrets|tokens|keys|passwords)\b"),
     re.compile(r"(?i)\bmark\s+(?:this\s+)?task\s+(?:as\s+)?complete\b"),
@@ -172,6 +176,12 @@ class ResearchSynthesizer:
         ctx = context or {}
 
         # ── 1. Bounded Limits Enforcement ───────────────────────────────────
+        depth = ctx.get("synthesis_depth", 1)
+        if depth > self.config.max_depth:
+            raise SynthesisLimitExceededError(
+                f"Synthesis depth ({depth}) exceeds MAX_SYNTHESIS_DEPTH ({self.config.max_depth})"
+            )
+
         if len(results) > self.config.max_sources:
             if self.config.strict_limits:
                 raise SynthesisLimitExceededError(
@@ -455,6 +465,13 @@ class ResearchSynthesizer:
                 "query": query,
             },
         )
+
+        # Check output serialization size
+        output_bytes = len(summary.encode("utf-8"))
+        if output_bytes > self.config.max_output_bytes:
+            raise SynthesisLimitExceededError(
+                f"Synthesized output size ({output_bytes} bytes) exceeds MAX_SYNTHESIS_OUTPUT_BYTES ({self.config.max_output_bytes})"
+            )
 
         # Verify full synthesis provenance
         valid, err = verify_synthesis_provenance(synthesis, prov_map, space_id)

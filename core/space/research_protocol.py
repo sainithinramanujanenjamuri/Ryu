@@ -596,8 +596,11 @@ class EvidenceRelation:
             raise ValueError("source_claim_id must not be empty")
         if not self.target_claim_id or not self.target_claim_id.strip():
             raise ValueError("target_claim_id must not be empty")
-        if self.source_claim_id == self.target_claim_id and self.relation_type == EvidenceRelationType.CONTRADICTS:
-            raise ValueError("A claim cannot contradict itself in an EvidenceRelation")
+        if self.source_claim_id == self.target_claim_id:
+            if self.relation_type == EvidenceRelationType.CONTRADICTS:
+                raise ValueError("A claim cannot contradict itself in an EvidenceRelation")
+            if self.relation_type == EvidenceRelationType.DERIVED_FROM:
+                raise ValueError("A claim cannot be reflexively derived from itself in an EvidenceRelation")
 
 
 @dataclass(frozen=True)
@@ -669,6 +672,32 @@ class ResearchSynthesis:
         has_taint = any(c.taint for c in self.claims) or self.taint
         if has_taint and not self.taint:
             raise TaintLaunderingViolation("Synthesis cannot clear taint when claims or constituent sources are tainted")
+
+        # Circular derivation relation check
+        derivation_graph: dict[str, list[str]] = {}
+        for rel in self.relations:
+            if rel.relation_type == EvidenceRelationType.DERIVED_FROM:
+                derivation_graph.setdefault(rel.source_claim_id, []).append(rel.target_claim_id)
+        if derivation_graph:
+            visited: set[str] = set()
+            rec_stack: set[str] = set()
+
+            def _has_cycle(node: str) -> bool:
+                visited.add(node)
+                rec_stack.add(node)
+                for neighbor in derivation_graph.get(node, []):
+                    if neighbor not in visited:
+                        if _has_cycle(neighbor):
+                            return True
+                    elif neighbor in rec_stack:
+                        return True
+                rec_stack.remove(node)
+                return False
+
+            for node in list(derivation_graph.keys()):
+                if node not in visited:
+                    if _has_cycle(node):
+                        raise ValueError(f"Circular derivation relationship detected involving claim '{node}'")
 
 
 def verify_synthesis_provenance(
