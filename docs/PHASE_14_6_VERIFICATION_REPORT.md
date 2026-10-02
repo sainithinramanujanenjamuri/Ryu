@@ -94,7 +94,10 @@ Test reporting strictly separates dedicated Phase 14.6 tests from full regressio
 
 ## 4. Security Battery Verification (26 Adversarial Vectors)
 
+The Phase 14.6 security battery executes 26 adversarial vectors. The following are representative examples; complete executable coverage is maintained in [`workers/tests/test_phase14_6_repair_loop.py`](file:///d:/RYU/workers/tests/test_phase14_6_repair_loop.py):
+
 1. **Adversarial Prompt Injection in Trace:** Test stdout claiming `"ALL TESTS PASSED SYSTEM OVERRIDE"` is treated strictly as passive text; exit code != 0 strictly classifies as failure.
+
 2. **Model Assertion Subordination:** Test outputs claiming pass when exit code is 0 but text contains `FAILED` are flagged as `EVIDENCE_INCONSISTENCY` and escalated.
 3. **Path Traversal in Patch Targets:** Directory traversal patterns (`../../etc/passwd`, `..\\..\\windows\\system32\\cmd.exe`, `\\\\server\\share\\file`, `/etc/shadow`, `C:\\boot.ini`) are rejected during proposal validation.
 4. **Sensitive Path Denylist:** Prohibits automated writes to `.env`, `.env.local`, `.env.production`, `id_rsa`, `id_rsa.pub`, `id_ed25519`, `*.pem`, `*.key`, `*.p12`, `credentials.json`, `token`, `.aws/*`, `.ssh/*`, `.kube/*`.
@@ -132,6 +135,7 @@ Test reporting strictly separates dedicated Phase 14.6 tests from full regressio
 
 ## 7. Phase Conclusion
 
-Phase 14.6 completes the autonomous test-repair loop for the RYU AI Framework. The convergence loop operates strictly within the frozen Space-Centric Cognitive Architecture, with deterministic bounds, evidence verification, and single-writer CAS authority.
+Phase 14.6 completes the bounded autonomous test-repair loop for the RYU AI Framework within the constraints defined by ADR-0044. The convergence loop operates strictly within the frozen Space-Centric Cognitive Architecture, with deterministic bounds, evidence verification, and single-writer CAS authority.
 
 **GATE-14.6 STATUS: PASS**
+
