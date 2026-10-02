@@ -26,16 +26,22 @@ from core.resources.manager import ResourceManager
 from core.space.research_protocol import (
     DefaultDenySourcePolicy,
     EvidenceRelationship,
+    ModelAssertionSubordinationError,
+    ProvenanceIntegrityError,
     ProvenanceInvalidError,
     ProvenanceRecord,
     ResearchConflict,
     ResearchContent,
     ResearchError,
     ResearchResult,
+    ResearchSpaceIsolationViolation,
     SourceAuthorizationPolicyProtocol,
     SourceIdentity,
     SourceNotAuthorizedError,
+    SynthesisLimitExceededError,
+    SynthesisStatus,
     TransformationStage,
+    canonical_json,
     compute_sha256,
     verify_provenance_chain,
 )
@@ -63,6 +69,9 @@ from workers.research.security import (
     SSRFSecurityViolation,
     UnsupportedSchemeError,
 )
+from workers.research.synthesis import (
+    ResearchSynthesizer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +93,7 @@ class ResearchWorker(BaseWorker):
         base_working_dir: Path | str | None = None,
         retriever_config: RetrievalConfig | None = None,
         retriever: BoundedSourceRetriever | None = None,
+        synthesizer: ResearchSynthesizer | None = None,
     ) -> None:
         ident = identity or WorkerIdentity(
             worker_id="research-worker-01",
@@ -94,15 +104,29 @@ class ResearchWorker(BaseWorker):
         self.base_working_dir = Path(base_working_dir) if base_working_dir else None
         self.retriever_config = retriever_config or RetrievalConfig()
         self.retriever = retriever or BoundedSourceRetriever(self.retriever_config)
+        self.synthesizer = synthesizer or ResearchSynthesizer()
 
     def _is_capability_supported(self, requested_capability: str) -> bool:
-        if requested_capability in ("research", "research.retrieve"):
+        if requested_capability in ("research", "research.retrieve", "research.synthesize"):
             return True
         if requested_capability.startswith("research."):
             return True
         return super()._is_capability_supported(requested_capability)
 
     def _execute_sandboxed(self, request: ExecutionRequest) -> ExecutionResult:
+        """Dispatch sandboxed research operation (retrieval or multi-source synthesis)."""
+        args = request.arguments or {}
+        action = args.get("action")
+        if (
+            action == "synthesize"
+            or request.capability == "research.synthesize"
+            or "research_results" in args
+            or "sources" in args
+        ):
+            return self._execute_synthesis(request)
+        return self._execute_retrieval(request)
+
+    def _execute_retrieval(self, request: ExecutionRequest) -> ExecutionResult:
         """Execute sandboxed research retrieval, fact extraction, and provenance binding."""
         args = request.arguments or {}
 
@@ -456,7 +480,7 @@ class ResearchWorker(BaseWorker):
             "taint": True,
         }
 
-        return ExecutionResult(
+        res = ExecutionResult(
             request_id=request.request_id,
             status="ok",
             artifacts=artifacts,
@@ -468,3 +492,304 @@ class ResearchWorker(BaseWorker):
                 f"Extracted {len(ext_bytes)} bytes; raw_prov={raw_prov.provenance_id}; ext_prov={ext_prov.provenance_id}",
             ],
         )
+        object.__setattr__(res, "_research_result", research_res)
+        return res
+
+    def _execute_synthesis(self, request: ExecutionRequest) -> ExecutionResult:
+        """Execute sandboxed multi-source research synthesis, conflict analysis, and evidence binding."""
+        args = request.arguments or {}
+        results: list[ResearchResult] = []
+
+        # 1. Gather research results: either provided directly or retrieved from multiple sources
+        raw_results = args.get("research_results")
+        if raw_results is not None:
+            if not isinstance(raw_results, (list, tuple)):
+                err = ExecutionError(
+                    error_class="terminal.invalid_params",
+                    message="'research_results' must be a list of ResearchResult instances",
+                    recoverable=False,
+                )
+                return ExecutionResult(
+                    request_id=request.request_id,
+                    status="failed",
+                    error=err,
+                    metrics=ExecutionMetrics(),
+                )
+            results = list(raw_results)
+        elif "sources" in args:
+            sources_spec = args.get("sources", [])
+            if not isinstance(sources_spec, (list, tuple)):
+                err = ExecutionError(
+                    error_class="terminal.invalid_params",
+                    message="'sources' must be a list of source descriptors",
+                    recoverable=False,
+                )
+                return ExecutionResult(
+                    request_id=request.request_id,
+                    status="failed",
+                    error=err,
+                    metrics=ExecutionMetrics(),
+                )
+            source_policy: SourceAuthorizationPolicyProtocol = args.get(
+                "source_policy"
+            ) or DefaultDenySourcePolicy()
+
+            # Retrieve each source
+            for idx, src_item in enumerate(sources_spec):
+                sub_args = dict(src_item) if isinstance(src_item, dict) else {"locator": str(src_item)}
+                sub_req = ExecutionRequest(
+                    request_id=f"{request.request_id}-sub-{idx}",
+                    correlation_id=request.correlation_id,
+                    space_id=request.space_id,
+                    worker_id=self.worker_id,
+                    task_id=f"{request.task_id}-sub-{idx}",
+                    plan_version=request.plan_version,
+                    capability="research.retrieve",
+                    arguments={**sub_args, "source_policy": source_policy},
+                )
+                sub_res = self._execute_retrieval(sub_req)
+                if sub_res.status != "ok":
+                    return ExecutionResult(
+                        request_id=request.request_id,
+                        status=sub_res.status,
+                        error=sub_res.error,
+                        metrics=ExecutionMetrics(),
+                        logs=sub_res.logs,
+                    )
+                if hasattr(sub_res, "_research_result") and getattr(sub_res, "_research_result"):
+                    results.append(getattr(sub_res, "_research_result"))
+        else:
+            err = ExecutionError(
+                error_class="terminal.invalid_params",
+                message="Synthesis request requires 'research_results' or 'sources'",
+                recoverable=False,
+            )
+            return ExecutionResult(
+                request_id=request.request_id,
+                status="failed",
+                error=err,
+                metrics=ExecutionMetrics(),
+            )
+
+        query = str(args.get("query", ""))
+        context = args.get("context")
+
+        # 2. Run synthesis engine
+        try:
+            synthesis = self.synthesizer.synthesize(
+                results=results,
+                space_id=request.space_id,
+                task_id=request.task_id,
+                plan_version=request.plan_version,
+                query=query,
+                context=context,
+            )
+        except SynthesisLimitExceededError as exc:
+            err = ExecutionError(
+                error_class="terminal.resource_limit",
+                message=sanitize_text(str(exc)),
+                recoverable=False,
+            )
+            return ExecutionResult(
+                request_id=request.request_id,
+                status="failed",
+                error=err,
+                metrics=ExecutionMetrics(),
+            )
+        except ModelAssertionSubordinationError as exc:
+            err = ExecutionError(
+                error_class="terminal.security_violation",
+                message=sanitize_text(str(exc)),
+                recoverable=False,
+            )
+            return ExecutionResult(
+                request_id=request.request_id,
+                status="denied",
+                error=err,
+                metrics=ExecutionMetrics(),
+            )
+        except ResearchSpaceIsolationViolation as exc:
+            err = ExecutionError(
+                error_class="terminal.permission_denied",
+                message=sanitize_text(str(exc)),
+                recoverable=False,
+            )
+            return ExecutionResult(
+                request_id=request.request_id,
+                status="denied",
+                error=err,
+                metrics=ExecutionMetrics(),
+            )
+        except (ProvenanceIntegrityError, ProvenanceInvalidError) as exc:
+            err = ExecutionError(
+                error_class="terminal.security_violation",
+                message=sanitize_text(str(exc)),
+                recoverable=False,
+            )
+            return ExecutionResult(
+                request_id=request.request_id,
+                status="failed",
+                error=err,
+                metrics=ExecutionMetrics(),
+            )
+        except Exception as exc:
+            err = ExecutionError(
+                error_class="terminal.invalid_content",
+                message=sanitize_text(str(exc)),
+                recoverable=False,
+            )
+            return ExecutionResult(
+                request_id=request.request_id,
+                status="failed",
+                error=err,
+                metrics=ExecutionMetrics(),
+            )
+
+        # 3. Create SYNTHESIZED provenance record (PROVENANCE-001)
+        report_data = {
+            "synthesis_id": synthesis.synthesis_id,
+            "space_id": synthesis.space_id,
+            "task_id": synthesis.task_id,
+            "plan_version": synthesis.plan_version,
+            "status": synthesis.status.value,
+            "summary": synthesis.summary,
+            "claims": [
+                {
+                    "claim_id": c.claim_id,
+                    "statement": c.statement,
+                    "source_ids": list(c.source_ids),
+                    "provenance_ids": list(c.provenance_ids),
+                    "confidence": c.confidence,
+                    "taint": c.taint,
+                }
+                for c in synthesis.claims
+            ],
+            "conflicts": [
+                {
+                    "conflict_id": conf.conflict_id,
+                    "topic": conf.topic,
+                    "source_a_prov": conf.source_a_provenance_id,
+                    "source_b_prov": conf.source_b_provenance_id,
+                    "statement_a": conf.statement_a,
+                    "statement_b": conf.statement_b,
+                }
+                for conf in synthesis.conflicts
+            ],
+            "uncertainties": list(synthesis.uncertainties),
+            "is_partial": synthesis.is_partial,
+            "source_ids": list(synthesis.source_ids),
+            "provenance_records": list(synthesis.provenance_records),
+            "taint": synthesis.taint,
+        }
+        report_json = canonical_json(report_data)
+        synth_report_hash = compute_sha256(report_json)
+
+        primary_parent_prov_id = synthesis.provenance_records[0] if synthesis.provenance_records else f"prov-{request.task_id}-root"
+        primary_source = results[0].content.source_identity if results else SourceIdentity(
+            source_id=f"src-{request.task_id}-agg",
+            source_type="doc_store",
+            locator=f"space://{request.space_id}/research/synthesis",
+            space_id=request.space_id,
+        )
+
+        synth_prov = ProvenanceRecord(
+            provenance_id=f"prov-{request.task_id}-synth",
+            source_identity=primary_source,
+            space_id=request.space_id,
+            task_id=request.task_id,
+            plan_version=request.plan_version,
+            producer=self.worker_id,
+            content_hash=synth_report_hash,
+            transformation_stage=TransformationStage.SYNTHESIZED,
+            parent_provenance_id=primary_parent_prov_id,
+            evidence_relationship=EvidenceRelationship.SYNTHESIZED_FROM,
+        )
+
+        # 4. Artifact generation (if base working dir is set)
+        artifacts: list[Artifact] = []
+        if self.base_working_dir:
+            artifact_dir = self.base_working_dir / "artifacts" / "research"
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+
+            report_file = artifact_dir / f"{request.task_id}_synthesis_report.json"
+            report_file.write_text(report_json, encoding="utf-8")
+            artifacts.append(
+                Artifact(
+                    artifact_id=f"art-{request.task_id}-report",
+                    name=f"{request.task_id}_synthesis_report.json",
+                    path=str(report_file),
+                    mime_type="application/json",
+                    size_bytes=len(report_json.encode("utf-8")),
+                    sha256=synth_report_hash,
+                    metadata={"synthesis_id": synthesis.synthesis_id, "provenance_id": synth_prov.provenance_id},
+                )
+            )
+
+            summary_file = artifact_dir / f"{request.task_id}_synthesis_summary.md"
+            summary_file.write_text(synthesis.summary, encoding="utf-8")
+            artifacts.append(
+                Artifact(
+                    artifact_id=f"art-{request.task_id}-summary",
+                    name=f"{request.task_id}_synthesis_summary.md",
+                    path=str(summary_file),
+                    mime_type="text/markdown",
+                    size_bytes=len(synthesis.summary.encode("utf-8")),
+                    sha256=compute_sha256(synthesis.summary),
+                    metadata={"synthesis_id": synthesis.synthesis_id, "provenance_id": synth_prov.provenance_id},
+                )
+            )
+
+        # 5. Emit research.conflict_detected if contradiction found
+        if synthesis.status == SynthesisStatus.CONTRADICTION and self.bus is not None:
+            for conf in synthesis.conflicts:
+                self.bus.publish(
+                    Pulse(
+                        id=f"pulse-conflict-{request.space_id}-{conf.conflict_id}",
+                        space_id=request.space_id,
+                        type="research.conflict_detected",
+                        severity=Severity.WARNING,
+                        source="research_worker",
+                        timestamp=datetime.now(timezone.utc),
+                        payload={
+                            "source_a": conf.source_a_provenance_id,
+                            "source_b": conf.source_b_provenance_id,
+                            "topic": conf.topic,
+                            "conflict_summary": f"Conflict between {conf.statement_a[:50]} and {conf.statement_b[:50]}",
+                            "task_id": request.task_id,
+                            "plan_version": request.plan_version,
+                        },
+                        taint=True,
+                        correlation_id=request.correlation_id,
+                    )
+                )
+
+        # 6. Return Ok ExecutionResult
+        output_data = {
+            "synthesis_id": synthesis.synthesis_id,
+            "status": synthesis.status.value,
+            "claims_count": len(synthesis.claims),
+            "conflicts_count": len(synthesis.conflicts),
+            "summary": synthesis.summary,
+            "uncertainties": list(synthesis.uncertainties),
+            "is_partial": synthesis.is_partial,
+            "source_ids": list(synthesis.source_ids),
+            "provenance_records": list(synthesis.provenance_records),
+            "synthesis_provenance_id": synth_prov.provenance_id,
+            "taint": True,
+        }
+
+        res = ExecutionResult(
+            request_id=request.request_id,
+            status="ok",
+            artifacts=artifacts,
+            output_data=output_data,
+            taint=True,  # Mandatory taint invariant
+            metrics=ExecutionMetrics(),
+            logs=[
+                f"Synthesized {len(synthesis.claims)} claims from {len(synthesis.source_ids)} sources; status={synthesis.status.value}",
+            ],
+        )
+        object.__setattr__(res, "_synthesis", synthesis)
+        object.__setattr__(res, "_provenance", synth_prov)
+        return res
+

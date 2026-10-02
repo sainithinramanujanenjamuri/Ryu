@@ -16,24 +16,36 @@ from typing import Any
 import pytest
 
 from core.space.research_protocol import (
+    MAX_CLAIMS_PER_SYNTHESIS,
+    MAX_CONFLICT_RELATIONSHIPS,
+    MAX_SOURCES_PER_SYNTHESIS,
     DefaultDenySourcePolicy,
+    EvidenceRelation,
     EvidenceRelationship,
+    EvidenceRelationType,
     ProvenanceIntegrityError,
     ProvenanceInvalidError,
     ProvenanceRecord,
+    ResearchClaim,
     ResearchConflict,
+    ResearchConflictError,
     ResearchContent,
     ResearchResult,
     ResearchSourceProtocol,
     ResearchSpaceIsolationViolation,
+    ResearchSynthesis,
     SourceAuthorizationDecision,
     SourceAuthorizationPolicyProtocol,
     SourceIdentity,
+    SynthesisLimitExceededError,
+    SynthesisStatus,
+    TaintLaunderingViolation,
     TransformationStage,
     canonical_json,
     canonicalize_locator,
     compute_sha256,
     verify_provenance_chain,
+    verify_synthesis_provenance,
 )
 
 # ── Fixtures & Helpers ────────────────────────────────────────────────────────
@@ -744,3 +756,300 @@ def test_research_source_protocol_full_flow() -> None:
     )
     assert valid is True
     assert err is None
+
+
+# ── Phase 14.7 Synthesis Protocol Unit Tests ─────────────────────────────────
+
+def test_research_claim_invariants() -> None:
+    """Verifies ResearchClaim field validation, provenance requirement, and immutability."""
+    # Valid claim
+    claim = ResearchClaim(
+        claim_id="claim-01",
+        space_id="space-claim-01",
+        statement="PostgreSQL supports JSONB indexing with GIN indexes.",
+        source_ids=("src-pg-01",),
+        provenance_ids=("prov-pg-01",),
+    )
+    assert claim.claim_id == "claim-01"
+    assert claim.taint is True
+    assert claim.confidence == 1.0
+
+    # Immutability
+    with pytest.raises(FrozenInstanceError):
+        claim.statement = "Modified statement"  # type: ignore
+
+    # Missing provenance_ids on verified claim
+    with pytest.raises(ValueError, match="traceable to one or more provenance records"):
+        ResearchClaim(
+            claim_id="claim-02",
+            space_id="space-claim-01",
+            statement="Unverified assertion",
+            source_ids=("src-pg-01",),
+            provenance_ids=(),
+            is_model_assertion=False,
+        )
+
+    # Missing source_ids on verified claim
+    with pytest.raises(ValueError, match="source_ids must not be empty"):
+        ResearchClaim(
+            claim_id="claim-03",
+            space_id="space-claim-01",
+            statement="Assertion with provenance but no source",
+            source_ids=(),
+            provenance_ids=("prov-01",),
+            is_model_assertion=False,
+        )
+
+    # Empty statement
+    with pytest.raises(ValueError, match="statement must not be empty"):
+        ResearchClaim(
+            claim_id="claim-04",
+            space_id="space-claim-01",
+            statement="",
+            source_ids=("src-01",),
+            provenance_ids=("prov-01",),
+        )
+
+    # Advisory model assertion can exist without provenance but flagged as model assertion
+    model_claim = ResearchClaim(
+        claim_id="claim-model-01",
+        space_id="space-claim-01",
+        statement="LLM speculative assertion",
+        source_ids=(),
+        provenance_ids=(),
+        is_model_assertion=True,
+    )
+    assert model_claim.is_model_assertion is True
+
+
+def test_evidence_relation_invariants() -> None:
+    """Verifies EvidenceRelation fields, relation types, and anti-reflexive contradictions."""
+    rel = EvidenceRelation(
+        relation_id="rel-01",
+        source_claim_id="claim-01",
+        target_claim_id="claim-02",
+        relation_type=EvidenceRelationType.SUPPORTS,
+        explanation="Source A corroborates Source B",
+    )
+    assert rel.relation_type == EvidenceRelationType.SUPPORTS
+
+    # Self-contradiction not permitted
+    with pytest.raises(ValueError, match="cannot contradict itself"):
+        EvidenceRelation(
+            relation_id="rel-02",
+            source_claim_id="claim-01",
+            target_claim_id="claim-01",
+            relation_type=EvidenceRelationType.CONTRADICTS,
+        )
+
+
+def test_research_synthesis_limits_and_validation() -> None:
+    """Verifies ResearchSynthesis ceiling limits, cross-space isolation, and conflict enforcement."""
+    claim = ResearchClaim(
+        claim_id="claim-01",
+        space_id="space-synth-01",
+        statement="Fact 1",
+        source_ids=("src-01",),
+        provenance_ids=("prov-01",),
+    )
+
+    # Valid synthesis
+    synth = ResearchSynthesis(
+        synthesis_id="synth-01",
+        space_id="space-synth-01",
+        task_id="task-01",
+        plan_version=1,
+        claims=(claim,),
+        status=SynthesisStatus.AGREEMENT,
+        source_ids=("src-01",),
+        provenance_records=("prov-01",),
+    )
+    assert synth.status == SynthesisStatus.AGREEMENT
+    assert synth.taint is True
+
+    # Limit violation: excess sources
+    excess_sources = tuple(f"src-{i}" for i in range(MAX_SOURCES_PER_SYNTHESIS + 1))
+    with pytest.raises(SynthesisLimitExceededError, match="MAX_SOURCES_PER_SYNTHESIS"):
+        ResearchSynthesis(
+            synthesis_id="synth-limit-01",
+            space_id="space-synth-01",
+            task_id="task-01",
+            plan_version=1,
+            claims=(claim,),
+            source_ids=excess_sources,
+        )
+
+    # Limit violation: excess claims
+    excess_claims = tuple(
+        ResearchClaim(
+            claim_id=f"c-{i}",
+            space_id="space-synth-01",
+            statement=f"Fact {i}",
+            source_ids=("src-01",),
+            provenance_ids=("prov-01",),
+        )
+        for i in range(MAX_CLAIMS_PER_SYNTHESIS + 1)
+    )
+    with pytest.raises(SynthesisLimitExceededError, match="MAX_CLAIMS_PER_SYNTHESIS"):
+        ResearchSynthesis(
+            synthesis_id="synth-limit-02",
+            space_id="space-synth-01",
+            task_id="task-01",
+            plan_version=1,
+            claims=excess_claims,
+            source_ids=("src-01",),
+        )
+
+    # Limit violation: excess relationships
+    excess_relations = tuple(
+        EvidenceRelation(
+            relation_id=f"r-{i}",
+            source_claim_id="c-0",
+            target_claim_id="c-1",
+            relation_type=EvidenceRelationType.SUPPORTS,
+        )
+        for i in range(MAX_CONFLICT_RELATIONSHIPS + 1)
+    )
+    with pytest.raises(SynthesisLimitExceededError, match="MAX_CONFLICT_RELATIONSHIPS"):
+        ResearchSynthesis(
+            synthesis_id="synth-limit-03",
+            space_id="space-synth-01",
+            task_id="task-01",
+            plan_version=1,
+            claims=(claim,),
+            relations=excess_relations,
+            source_ids=("src-01",),
+        )
+
+    # Cross-space claim rejection
+    foreign_claim = ResearchClaim(
+        claim_id="claim-foreign",
+        space_id="foreign-space",
+        statement="Foreign fact",
+        source_ids=("src-01",),
+        provenance_ids=("prov-01",),
+    )
+    with pytest.raises(ResearchSpaceIsolationViolation):
+        ResearchSynthesis(
+            synthesis_id="synth-cross-01",
+            space_id="space-synth-01",
+            task_id="task-01",
+            plan_version=1,
+            claims=(foreign_claim,),
+            source_ids=("src-01",),
+        )
+
+    # Contradiction status without conflict entity is prohibited (cannot hide conflicts)
+    with pytest.raises(ResearchConflictError, match="requires at least one attached ResearchConflict"):
+        ResearchSynthesis(
+            synthesis_id="synth-conf-01",
+            space_id="space-synth-01",
+            task_id="task-01",
+            plan_version=1,
+            claims=(claim,),
+            status=SynthesisStatus.CONTRADICTION,
+            conflicts=(),
+            source_ids=("src-01",),
+        )
+
+    # Taint laundering attempt
+    with pytest.raises(TaintLaunderingViolation):
+        ResearchSynthesis(
+            synthesis_id="synth-taint-01",
+            space_id="space-synth-01",
+            task_id="task-01",
+            plan_version=1,
+            claims=(claim,),  # claim.taint is True
+            taint=False,       # illegal attempt to declare clean
+            source_ids=("src-01",),
+        )
+
+
+def test_verify_synthesis_provenance_full_cycle() -> None:
+    """Verifies verify_synthesis_provenance checking space, tamper, claims, and taint."""
+    src = create_source_identity(source_id="src-01", space_id="space-val-01")
+    prov = ProvenanceRecord(
+        provenance_id="prov-01",
+        source_identity=src,
+        space_id="space-val-01",
+        task_id="task-01",
+        plan_version=1,
+        producer="research_worker",
+        content_hash=compute_sha256("content A"),
+        transformation_stage=TransformationStage.RAW,
+    )
+    prov_map = {"prov-01": prov}
+
+    claim = ResearchClaim(
+        claim_id="claim-01",
+        space_id="space-val-01",
+        statement="Verified statement",
+        source_ids=("src-01",),
+        provenance_ids=("prov-01",),
+    )
+
+    synth = ResearchSynthesis(
+        synthesis_id="synth-01",
+        space_id="space-val-01",
+        task_id="task-01",
+        plan_version=1,
+        claims=(claim,),
+        source_ids=("src-01",),
+        provenance_records=("prov-01",),
+        taint=True,
+    )
+
+    # 1. Valid synthesis passes
+    ok, err = verify_synthesis_provenance(synth, prov_map, "space-val-01")
+    assert ok is True
+    assert err is None
+
+    # 2. Cross-space synthesis request fails
+    ok, err = verify_synthesis_provenance(synth, prov_map, "other-space")
+    assert ok is False
+    assert "Cross-space violation" in str(err)
+
+    # 3. Missing provenance record fails
+    empty_map: dict[str, ProvenanceRecord] = {}
+    ok, err = verify_synthesis_provenance(synth, empty_map, "space-val-01")
+    assert ok is False
+    assert "missing provenance record" in str(err)
+
+    # 4. Tampered provenance record fails
+    tampered_prov = ProvenanceRecord(
+        provenance_id="prov-01",
+        source_identity=src,
+        space_id="space-val-01",
+        task_id="task-01",
+        plan_version=1,
+        producer="research_worker",
+        content_hash=compute_sha256("content A"),
+        transformation_stage=TransformationStage.RAW,
+    )
+    object.__setattr__(tampered_prov, "canonical_hash", "tampered_hash_value")
+    ok, err = verify_synthesis_provenance(synth, {"prov-01": tampered_prov}, "space-val-01")
+    assert ok is False
+    assert "Tampered provenance record" in str(err)
+
+    # 5. Claim source_ids mismatch referenced provenance
+    mismatched_claim = ResearchClaim(
+        claim_id="claim-bad-src",
+        space_id="space-val-01",
+        statement="Statement with wrong source ID",
+        source_ids=("src-wrong",),
+        provenance_ids=("prov-01",),
+    )
+    bad_src_synth = ResearchSynthesis(
+        synthesis_id="synth-bad-src",
+        space_id="space-val-01",
+        task_id="task-01",
+        plan_version=1,
+        claims=(mismatched_claim,),
+        source_ids=("src-wrong",),
+        provenance_records=("prov-01",),
+        taint=True,
+    )
+    ok, err = verify_synthesis_provenance(bad_src_synth, prov_map, "space-val-01")
+    assert ok is False
+    assert "source_ids mismatch" in str(err)
+

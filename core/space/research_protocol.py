@@ -98,6 +98,29 @@ class ResearchConflictError(ResearchError):
     """Raised when conflicting evidence across sources is detected without a conflict state (RESEARCH-004)."""
 
 
+class SynthesisLimitExceededError(ResearchError):
+    """Raised when synthesis limits (sources, claims, relations, bytes) are exceeded (RESEARCH-005)."""
+
+
+class ModelAssertionSubordinationError(ResearchError):
+    """Raised when an unverified model assertion attempts to claim authoritative evidence status."""
+
+
+class TaintLaunderingViolation(ResearchError):
+    """Raised when an operation attempts to strip taint from synthesized research without clearance."""
+
+
+# ── Bounded Synthesis Constants ─────────────────────────────────────────────
+
+MAX_SOURCES_PER_SYNTHESIS: int = 10
+MAX_EVIDENCE_ITEMS: int = 50
+MAX_CLAIMS_PER_SYNTHESIS: int = 50
+MAX_SYNTHESIS_INPUT_BYTES: int = 512 * 1024  # 512 KB
+MAX_SYNTHESIS_DEPTH: int = 5
+MAX_CONFLICT_RELATIONSHIPS: int = 50
+MAX_SYNTHESIS_OUTPUT_BYTES: int = 1024 * 1024  # 1 MB
+
+
 # ── Canonical Hashing & Serialization ───────────────────────────────────────
 
 def canonical_json(data: Any) -> str:
@@ -290,6 +313,26 @@ class EvidenceRelationship(str, Enum):
     VALIDATES = "validates"
     SUPERSEDES = "supersedes"
     CONFLICTS_WITH = "conflicts_with"
+
+
+class SynthesisStatus(str, Enum):
+    """Classification of multi-source research synthesis outcome (RESEARCH-004, RESEARCH-005)."""
+
+    AGREEMENT = "agreement"
+    PARTIAL_AGREEMENT = "partial_agreement"
+    CONTRADICTION = "contradiction"
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+    UNRELATED = "unrelated"
+
+
+class EvidenceRelationType(str, Enum):
+    """Relationship between research claims or between claim and evidence (EVIDENCE-003, RESEARCH-004)."""
+
+    SUPPORTS = "supports"
+    CONTRADICTS = "contradicts"
+    QUALIFIES = "qualifies"
+    DUPLICATES = "duplicates"
+    DERIVED_FROM = "derived_from"
 
 
 @dataclass(frozen=True)
@@ -500,6 +543,192 @@ def verify_provenance_chain(
                     f"Broken transformation link at step {idx}: record '{record.provenance_id}' "
                     f"references parent '{record.parent_provenance_id}', but predecessor is '{prev_record.provenance_id}'"
                 )
+
+    return True, None
+
+
+# ── Research Claim & Synthesis Models ───────────────────────────────────────
+
+@dataclass(frozen=True)
+class ResearchClaim:
+    """Domain-neutral representation of a research claim (RESEARCH-002, RESEARCH-005)."""
+
+    claim_id: str
+    space_id: str
+    statement: str
+    source_ids: tuple[str, ...]
+    provenance_ids: tuple[str, ...]
+    evidence_ids: tuple[str, ...] = ()
+    taint: bool = True
+    confidence: float = 1.0
+    is_model_assertion: bool = False
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.claim_id or not self.claim_id.strip():
+            raise ValueError("claim_id must not be empty")
+        if not self.space_id or not self.space_id.strip():
+            raise ValueError("space_id must not be empty (SCCA Law 1)")
+        if not self.statement or not self.statement.strip():
+            raise ValueError("statement must not be empty")
+        if not self.is_model_assertion:
+            if not self.provenance_ids:
+                raise ValueError("Every synthesized claim must be traceable to one or more provenance records.")
+            if not self.source_ids:
+                raise ValueError("source_ids must not be empty for verified claims")
+
+
+@dataclass(frozen=True)
+class EvidenceRelation:
+    """Directional relationship between two claims or evidence items."""
+
+    relation_id: str
+    source_claim_id: str
+    target_claim_id: str
+    relation_type: EvidenceRelationType
+    provenance_ids: tuple[str, ...] = ()
+    explanation: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.relation_id or not self.relation_id.strip():
+            raise ValueError("relation_id must not be empty")
+        if not self.source_claim_id or not self.source_claim_id.strip():
+            raise ValueError("source_claim_id must not be empty")
+        if not self.target_claim_id or not self.target_claim_id.strip():
+            raise ValueError("target_claim_id must not be empty")
+        if self.source_claim_id == self.target_claim_id and self.relation_type == EvidenceRelationType.CONTRADICTS:
+            raise ValueError("A claim cannot contradict itself in an EvidenceRelation")
+
+
+@dataclass(frozen=True)
+class ResearchSynthesis:
+    """Output contract for bounded multi-source research synthesis (RESEARCH-004, RESEARCH-005, PROVENANCE-001..003)."""
+
+    synthesis_id: str
+    space_id: str
+    task_id: str
+    plan_version: int
+    claims: tuple[ResearchClaim, ...]
+    relations: tuple[EvidenceRelation, ...] = ()
+    conflicts: tuple[ResearchConflict, ...] = ()
+    status: SynthesisStatus = SynthesisStatus.AGREEMENT
+    summary: str = ""
+    provenance_records: tuple[str, ...] = ()
+    source_ids: tuple[str, ...] = ()
+    taint: bool = True
+    is_partial: bool = False
+    uncertainties: tuple[str, ...] = ()
+    metadata: dict[str, Any] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def __post_init__(self) -> None:
+        if not self.synthesis_id or not self.synthesis_id.strip():
+            raise ValueError("synthesis_id must not be empty")
+        if not self.space_id or not self.space_id.strip():
+            raise ValueError("space_id must not be empty (SCCA Law 1)")
+        if not self.task_id or not self.task_id.strip():
+            raise ValueError("task_id must not be empty")
+        if self.plan_version < 1:
+            raise ValueError("plan_version must be >= 1")
+
+        # Bounds enforcement
+        if len(self.source_ids) > MAX_SOURCES_PER_SYNTHESIS:
+            raise SynthesisLimitExceededError(
+                f"Source count {len(self.source_ids)} exceeds MAX_SOURCES_PER_SYNTHESIS ({MAX_SOURCES_PER_SYNTHESIS})"
+            )
+        if len(self.claims) > MAX_CLAIMS_PER_SYNTHESIS:
+            raise SynthesisLimitExceededError(
+                f"Claim count {len(self.claims)} exceeds MAX_CLAIMS_PER_SYNTHESIS ({MAX_CLAIMS_PER_SYNTHESIS})"
+            )
+        if len(self.relations) > MAX_CONFLICT_RELATIONSHIPS:
+            raise SynthesisLimitExceededError(
+                f"Relationship count {len(self.relations)} exceeds MAX_CONFLICT_RELATIONSHIPS ({MAX_CONFLICT_RELATIONSHIPS})"
+            )
+
+        # Cross-space isolation
+        for claim in self.claims:
+            if claim.space_id != self.space_id:
+                raise ResearchSpaceIsolationViolation(
+                    requesting_space=self.space_id,
+                    target_space=claim.space_id,
+                    entity_id=claim.claim_id,
+                )
+        for conflict in self.conflicts:
+            if conflict.space_id != self.space_id:
+                raise ResearchSpaceIsolationViolation(
+                    requesting_space=self.space_id,
+                    target_space=conflict.space_id,
+                    entity_id=conflict.conflict_id,
+                )
+
+        # Invariant: contradictions must not be suppressed
+        if self.status == SynthesisStatus.CONTRADICTION and not self.conflicts:
+            raise ResearchConflictError("SynthesisStatus CONTRADICTION requires at least one attached ResearchConflict")
+
+        # Taint preservation invariant
+        has_taint = any(c.taint for c in self.claims) or self.taint
+        if has_taint and not self.taint:
+            raise TaintLaunderingViolation("Synthesis cannot clear taint when claims or constituent sources are tainted")
+
+
+def verify_synthesis_provenance(
+    synthesis: ResearchSynthesis,
+    provenance_map: dict[str, ProvenanceRecord],
+    expected_space_id: str,
+) -> tuple[bool, str | None]:
+    """Verify that a ResearchSynthesis and all referenced claims trace back to valid, single-space provenance.
+
+    Invariants checked:
+    1. Space isolation: synthesis and all provenance records belong to expected_space_id (PROVENANCE-003).
+    2. Provenance completeness: all provenance_ids referenced by synthesis or claims exist in provenance_map.
+    3. Provenance integrity: canonical hashes of all provenance records match calculated hashes (PROVENANCE-002).
+    4. Source correspondence: claim source_ids match source_identity.source_id of referenced provenance.
+    5. Taint preservation: if any referenced provenance is tainted, synthesis must be tainted (TAINT-001, RESEARCH-003).
+    6. Model subordination: claims without provenance marked as verified fail verification (EVIDENCE-002).
+    """
+    if synthesis.space_id != expected_space_id:
+        return False, f"Cross-space violation: synthesis space '{synthesis.space_id}' != '{expected_space_id}'"
+
+    # Verify provenance map records
+    any_provenance_tainted = False
+    for pid, record in provenance_map.items():
+        if record.space_id != expected_space_id:
+            return False, f"Cross-space provenance violation: record '{pid}' belongs to space '{record.space_id}'"
+        expected_canonical = record.compute_canonical_hash()
+        if record.canonical_hash != expected_canonical:
+            return False, f"Tampered provenance record '{pid}': expected hash '{expected_canonical}', got '{record.canonical_hash}'"
+
+    # Verify synthesis provenance references
+    for pid in synthesis.provenance_records:
+        if pid not in provenance_map:
+            return False, f"Synthesis references missing provenance record: '{pid}'"
+        any_provenance_tainted = True  # External research provenance is tainted
+
+    # Verify claim provenance references
+    for claim in synthesis.claims:
+        if claim.space_id != expected_space_id:
+            return False, f"Cross-space claim violation: claim '{claim.claim_id}' belongs to space '{claim.space_id}'"
+        if claim.is_model_assertion and not claim.provenance_ids:
+            return False, f"Model assertion '{claim.claim_id}' cannot be verified without backing provenance"
+        for pid in claim.provenance_ids:
+            if pid not in provenance_map:
+                return False, f"Claim '{claim.claim_id}' references missing provenance record: '{pid}'"
+            rec = provenance_map[pid]
+            if rec.source_identity.source_id not in claim.source_ids:
+                return False, f"Claim '{claim.claim_id}' source_ids mismatch referenced provenance '{pid}'"
+
+    # Verify conflict provenance references
+    for conflict in synthesis.conflicts:
+        if conflict.space_id != expected_space_id:
+            return False, f"Cross-space conflict violation: conflict '{conflict.conflict_id}' belongs to space '{conflict.space_id}'"
+        if conflict.source_a_provenance_id not in provenance_map:
+            return False, f"Conflict '{conflict.conflict_id}' references missing source_a provenance '{conflict.source_a_provenance_id}'"
+        if conflict.source_b_provenance_id not in provenance_map:
+            return False, f"Conflict '{conflict.conflict_id}' references missing source_b provenance '{conflict.source_b_provenance_id}'"
+
+    # Taint preservation check
+    if any_provenance_tainted and not synthesis.taint:
+        return False, "Taint laundering detected: synthesis claimed taint=False with tainted provenance"
 
     return True, None
 
