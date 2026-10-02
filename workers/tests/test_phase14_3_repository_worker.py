@@ -18,9 +18,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from pathlib import Path
 import tempfile
 import threading
+from pathlib import Path
 
 import pytest
 from ryu.pulse_bus.bus import PulseBus

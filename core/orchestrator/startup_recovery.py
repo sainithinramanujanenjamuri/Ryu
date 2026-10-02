@@ -36,7 +36,6 @@ from core.orchestrator.execution_state import (
     ExecutionAttemptStore,
 )
 
-
 # ── Classification taxonomy ───────────────────────────────────────────────────
 
 class InterruptionClass(str, Enum):

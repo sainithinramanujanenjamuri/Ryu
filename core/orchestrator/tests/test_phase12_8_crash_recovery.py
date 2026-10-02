@@ -14,11 +14,8 @@ All tests use InMemory stores (no PostgreSQL required).
 from __future__ import annotations
 
 import hashlib
-import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
-
-import pytest
 
 from core.orchestrator.dispatch_model import (
     ConvergenceDecision,
@@ -28,7 +25,6 @@ from core.orchestrator.dispatch_model import (
     compute_dispatch_idempotency_key,
 )
 from core.orchestrator.execution_state import (
-    ConvergenceStateRecord,
     ExecutionAttemptRecord,
     InMemoryConvergenceStateStore,
     InMemoryExecutionAttemptStore,
@@ -37,7 +33,6 @@ from core.orchestrator.startup_recovery import (
     InterruptionClass,
     StartupRecoveryEngine,
 )
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -561,10 +556,10 @@ class TestCrash10AmbiguousStateEscalates:
         original_classify = engine._classify
 
         def _classify_ambiguous(rec: ExecutionAttemptRecord):
-            cls = original_classify(rec)
-            from dataclasses import replace as dr
+            _ = original_classify(rec)
             from core.orchestrator.startup_recovery import InterruptedAttempt
             return InterruptedAttempt(
+
                 record=rec,
                 interruption_class=InterruptionClass.AMBIGUOUS,
                 proposed_recovery_action="escalate",

@@ -14,8 +14,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
-    from core.orchestrator.execution_state import ExecutionAttemptStore as ExecutionAttemptStoreType
     from core.orchestrator.execution_state import ConvergenceStateStore as ConvergenceStateStoreType
+    from core.orchestrator.execution_state import ExecutionAttemptStore as ExecutionAttemptStoreType
 else:
     ExecutionAttemptStoreType = Any
     ConvergenceStateStoreType = Any
@@ -38,6 +38,12 @@ from core.space.memory_protocol import (
     ExperienceHint,
     ExperienceObserverProtocol,
     TaskExecutionOutcome,
+)
+from core.space.repair_protocol import (
+    FailureClassification,
+    RepairDiagnostic,
+    RepairProposal,
+    validate_repair_proposal,
 )
 
 
@@ -364,7 +370,6 @@ class DeterministicDispatcher:
         """
         # Import here to avoid circular imports; store is protocol-typed
         try:
-            from core.orchestrator.execution_state import ExecutionAttemptRecord
             interrupted = self._attempt_store.get_interrupted_attempts(crash_detection_window_seconds=0.0)  # type: ignore[union-attr]
             for record in interrupted:
                 attempt = DispatchAttempt(
@@ -2756,6 +2761,11 @@ class ConvergenceProposal:
     counterfactual_recommendation: str = ""
     source_experience_id: str = ""
 
+    # Phase 14.6: Bounded test-repair loop fields (REPAIR-001..004)
+    repair_iteration: int = 0
+    repair_proposal: RepairProposal | None = None
+    repair_diagnostic: RepairDiagnostic | None = None
+
 
 def _compute_failure_fingerprint(space_id: str, task_id: str, error: str) -> str:
     """Deterministic SHA-256 failure fingerprint for loop-detection (Phase 12.6)."""
@@ -2784,15 +2794,17 @@ class ConvergenceEngine:
 
     MAX_RETRY_BUDGET = 3
     MAX_REPLAN_BUDGET = 3
+    MAX_REPAIR_ITERATIONS = 3
 
     def __init__(
         self,
         space_id: str,
-        reconciler: Any,  # PlanReconciler — protocol-typed to avoid tight coupling
+        reconciler: Any = None,  # PlanReconciler — protocol-typed to avoid tight coupling
         goal_evaluator: GoalEvaluatorProtocol | None = None,
         replay_mode: bool = False,
         state_store: "ConvergenceStateStoreType | None" = None,
         adaptation_layer: AdaptationLayerProtocol | None = None,
+        bus: Any | None = None,
     ) -> None:
         self.space_id = space_id
         self.reconciler = reconciler
@@ -2800,13 +2812,64 @@ class ConvergenceEngine:
         self.replay_mode = replay_mode
         self._state_store = state_store
         self.adaptation_layer = adaptation_layer
+        self.bus = bus
         # Bounded counters — keyed per task_id (in-memory cache; backed by durable store if provided)
         self._retry_counts: dict[str, int] = {}
         self._replan_counts: dict[str, int] = {}
+        self._repair_counts: dict[str, int] = {}
         # Failure fingerprint registry for loop detection
         self._seen_fingerprints: set[str] = set()
+        # Chronological repair failure fingerprint sequences for loop/oscillation detection (REPAIR-002)
+        self._repair_fingerprints: dict[str, list[str]] = {}
 
-    # ── Durable state helpers (RECOVERY-002, RECOVERY-003) ───────────────────
+    # ── Durable state helpers (RECOVERY-002, RECOVERY-003, REPAIR-001..003) ──
+
+    def _get_repair_count(self, task_id: str) -> int:
+        """Return repair count, loading from durable store if not yet cached (REPAIR-001)."""
+        if task_id not in self._repair_counts:
+            if self._state_store is not None:
+                try:
+                    rec = self._state_store.load_state(self.space_id, task_id)
+                    self._repair_counts[task_id] = rec.repair_count
+                    self._repair_fingerprints[task_id] = list(rec.repair_fingerprints)
+                    for fp in rec.repair_fingerprints:
+                        self._seen_fingerprints.add(fp)
+                except Exception:
+                    self._repair_counts[task_id] = 0
+                    self._repair_fingerprints[task_id] = []
+            else:
+                self._repair_counts[task_id] = 0
+                self._repair_fingerprints[task_id] = []
+        return self._repair_counts[task_id]
+
+    def _increment_repair(self, task_id: str) -> int:
+        """Increment repair counter and persist to durable store (REPAIR-001)."""
+        current = self._get_repair_count(task_id)
+        new_count = current + 1
+        self._repair_counts[task_id] = new_count
+        if self._state_store is not None:
+            try:
+                self._state_store.increment_repair(self.space_id, task_id)
+            except Exception:
+                pass
+        return new_count
+
+    def _add_repair_fingerprint(self, task_id: str, fingerprint: str) -> None:
+        """Record repair failure fingerprint in memory sequence and durable store (REPAIR-002)."""
+        self._get_repair_count(task_id)
+        fps = self._repair_fingerprints.setdefault(task_id, [])
+        fps.append(fingerprint)
+        self._seen_fingerprints.add(fingerprint)
+        if self._state_store is not None:
+            try:
+                self._state_store.add_repair_fingerprint(self.space_id, task_id, fingerprint)
+            except Exception:
+                pass
+
+    def _get_repair_fingerprints(self, task_id: str) -> tuple[str, ...]:
+        """Return chronological sequence of repair failure fingerprints for task (REPAIR-002)."""
+        self._get_repair_count(task_id)
+        return tuple(self._repair_fingerprints.get(task_id, []))
 
     def _get_retry_count(self, task_id: str) -> int:
         """Return retry count, loading from durable store if not yet cached."""
@@ -2880,6 +2943,8 @@ class ConvergenceEngine:
         failed_task_id: str | None = None,
         error_class: str = "",
         error_message: str = "",
+        repair_diagnostic: RepairDiagnostic | None = None,
+        repair_proposal: RepairProposal | None = None,
     ) -> ConvergenceProposal:
         """Evaluate plan state and produce a deterministic ConvergenceProposal.
 
@@ -2893,6 +2958,8 @@ class ConvergenceEngine:
             failed_task_id:  Task that just failed, if any (None for non-failure calls).
             error_class:     Failure taxonomy class (e.g. "transient.timeout").
             error_message:   Human-readable failure message.
+            repair_diagnostic: Optional structured test failure diagnostic (Phase 14.6).
+            repair_proposal: Optional bounded repair proposal (Phase 14.6).
 
         Returns:
             ConvergenceProposal with decision + optional plan_delta for REPLAN.
@@ -2903,6 +2970,16 @@ class ConvergenceEngine:
 
         # ── 1. Failure path ──────────────────────────────────────────────────
         if failed_task_id is not None:
+            if repair_diagnostic is not None:
+                return self._handle_repair(
+                    kernel=kernel,
+                    plan_version=plan_version,
+                    task_graph=task_graph,
+                    failed_task_id=failed_task_id,
+                    diagnostic=repair_diagnostic,
+                    proposal=repair_proposal,
+                    reason=error_message or error_class,
+                )
             return self._handle_failure(
                 kernel=kernel,
                 plan_version=plan_version,
@@ -3043,6 +3120,285 @@ class ConvergenceEngine:
             task_id=failed_task_id,
             reason=f"Structural failure '{error_class}': {error_message}",
             fingerprint=fingerprint,
+        )
+
+    def _handle_repair(
+        self,
+        kernel: SpaceKernelAuthorityProtocol,
+        plan_version: int,
+        task_graph: TaskGraph,
+        failed_task_id: str,
+        diagnostic: RepairDiagnostic,
+        proposal: RepairProposal | None = None,
+        reason: str = "",
+    ) -> ConvergenceProposal:
+        """Handle test failure via bounded test-repair loop (ADR-0044, REPAIR-001..004)."""
+        repair_key = failed_task_id
+        fingerprint = diagnostic.failure_fingerprint
+
+        # 1. Cross-Space Isolation (SCCA Law 1, SPACE-001)
+        if diagnostic.space_id != self.space_id:
+            return ConvergenceProposal(
+                decision=ConvergenceDecision.ESCALATE,
+                space_id=self.space_id,
+                plan_version=plan_version,
+                task_id=failed_task_id,
+                reasoning=(
+                    f"Cross-space repair attempt rejected: diagnostic space '{diagnostic.space_id}' "
+                    f"does not match engine space '{self.space_id}'"
+                ),
+                escalation_reason="Cross-space boundary violation",
+                failure_fingerprint=fingerprint,
+                repair_diagnostic=diagnostic,
+            )
+
+        if proposal is not None and proposal.space_id != self.space_id:
+            return ConvergenceProposal(
+                decision=ConvergenceDecision.ESCALATE,
+                space_id=self.space_id,
+                plan_version=plan_version,
+                task_id=failed_task_id,
+                reasoning=(
+                    f"Cross-space repair attempt rejected: proposal space '{proposal.space_id}' "
+                    f"does not match engine space '{self.space_id}'"
+                ),
+                escalation_reason="Cross-space boundary violation",
+                failure_fingerprint=fingerprint,
+                repair_diagnostic=diagnostic,
+                repair_proposal=proposal,
+            )
+
+        # 2. Inconclusive Evidence or Evidence Inconsistency (EVIDENCE-001, REPAIR-004)
+        if diagnostic.failure_class in (
+            FailureClassification.UNKNOWN_INCONCLUSIVE,
+            FailureClassification.EVIDENCE_INCONSISTENCY,
+        ):
+            return ConvergenceProposal(
+                decision=ConvergenceDecision.ESCALATE,
+                space_id=self.space_id,
+                plan_version=plan_version,
+                task_id=failed_task_id,
+                reasoning="Test failure evidence is inconclusive or contradictory. Automated repair loop halted.",
+                escalation_reason="Inconclusive test evidence",
+                failure_fingerprint=fingerprint,
+                repair_diagnostic=diagnostic,
+            )
+
+        # 3. Repository State Mismatch (REPO-005, REPAIR-004)
+        if diagnostic.failure_class == FailureClassification.REPOSITORY_STATE_MISMATCH:
+            return ConvergenceProposal(
+                decision=ConvergenceDecision.ESCALATE,
+                space_id=self.space_id,
+                plan_version=plan_version,
+                task_id=failed_task_id,
+                reasoning="Repository state divergence detected. Pre-state hash does not match current repository.",
+                escalation_reason="Repository state mismatch",
+                failure_fingerprint=fingerprint,
+                repair_diagnostic=diagnostic,
+            )
+
+        # 4. Repeated Fingerprint & Oscillation Guard (REPAIR-002, Slices B & D)
+        history = self._get_repair_fingerprints(repair_key)
+        if fingerprint in history:
+            is_immediate = len(history) > 0 and history[-1] == fingerprint
+            desc = (
+                "Repeated failure fingerprint detected (repair did not fix issue)"
+                if is_immediate
+                else "Oscillating failure loop detected (failure reappeared)"
+            )
+            return ConvergenceProposal(
+                decision=ConvergenceDecision.ESCALATE,
+                space_id=self.space_id,
+                plan_version=plan_version,
+                task_id=failed_task_id,
+                reasoning=f"{desc}: '{fingerprint}'. Escalating to human operator.",
+                escalation_reason=desc,
+                failure_fingerprint=fingerprint,
+                repair_diagnostic=diagnostic,
+                repair_iteration=self._get_repair_count(repair_key),
+            )
+
+        # 5. Iteration Ceiling (MAX_REPAIR_ITERATIONS = 3) (REPAIR-001, Slice C)
+        current_iterations = self._get_repair_count(repair_key)
+        if current_iterations >= self.MAX_REPAIR_ITERATIONS:
+            return ConvergenceProposal(
+                decision=ConvergenceDecision.ESCALATE,
+                space_id=self.space_id,
+                plan_version=plan_version,
+                task_id=failed_task_id,
+                reasoning=(
+                    f"Repair iteration ceiling reached ({self.MAX_REPAIR_ITERATIONS}/{self.MAX_REPAIR_ITERATIONS}). "
+                    f"No further automatic repairs permitted."
+                ),
+                escalation_reason="Repair iteration ceiling reached",
+                failure_fingerprint=fingerprint,
+                repair_diagnostic=diagnostic,
+                repair_iteration=current_iterations,
+            )
+
+        # 6. Check if Proposal Provided
+        if proposal is None:
+            return ConvergenceProposal(
+                decision=ConvergenceDecision.ESCALATE,
+                space_id=self.space_id,
+                plan_version=plan_version,
+                task_id=failed_task_id,
+                reasoning=f"No repair proposal provided for failure '{diagnostic.failure_class.value}'. Escalating.",
+                escalation_reason="Missing repair proposal",
+                failure_fingerprint=fingerprint,
+                repair_diagnostic=diagnostic,
+                repair_iteration=current_iterations,
+            )
+
+        # 7. Validate Repair Proposal Bounds & Security (REPAIR-002)
+        is_valid, val_err = validate_repair_proposal(proposal)
+        if not is_valid:
+            return ConvergenceProposal(
+                decision=ConvergenceDecision.ESCALATE,
+                space_id=self.space_id,
+                plan_version=plan_version,
+                task_id=failed_task_id,
+                reasoning=f"Repair proposal rejected due to security or policy boundary violation: {val_err}",
+                escalation_reason=f"Repair proposal violation: {val_err}",
+                failure_fingerprint=fingerprint,
+                repair_diagnostic=diagnostic,
+                repair_proposal=proposal,
+                repair_iteration=current_iterations,
+            )
+
+        # 8. Advance Iteration & Record Fingerprint
+        new_iteration = self._increment_repair(repair_key)
+        self._add_repair_fingerprint(repair_key, fingerprint)
+
+        # 9. Query Advisory Memory Hints (REPAIR-003)
+        adaptation_hints: list[ExperienceHint] = []
+        counterfactual_rec = ""
+        source_exp_id = ""
+        if self.adaptation_layer is not None and not self.replay_mode:
+            try:
+                hint_query = {
+                    "task_id": failed_task_id,
+                    "error_class": diagnostic.failure_class.value,
+                    "fingerprint": fingerprint,
+                    "repair_iteration": new_iteration,
+                }
+                hints = self.adaptation_layer.generate_hints(
+                    space_id=self.space_id,
+                    situation_hint=hint_query,
+                    limit=5,
+                )
+                adaptation_hints = list(hints)
+                for h in adaptation_hints:
+                    if h.counterfactual_summary and not counterfactual_rec:
+                        counterfactual_rec = h.counterfactual_summary
+                    if h.experience_id and not source_exp_id:
+                        source_exp_id = h.experience_id
+            except Exception:
+                pass
+
+        # 10. Emit repair.loop_iterated Pulse (ADR-0044, REPAIR-001)
+        if self.bus is not None and not self.replay_mode:
+            self.bus.publish(
+                Pulse(
+                    id=f"pulse-repair-{self.space_id}-{failed_task_id}-{new_iteration}",
+                    space_id=self.space_id,
+                    type="repair.loop_iterated",
+                    severity=Severity.INFO,
+                    source="convergence_engine",
+                    timestamp=datetime.now(timezone.utc),
+                    payload={
+                        "iteration": new_iteration,
+                        "max_iterations": self.MAX_REPAIR_ITERATIONS,
+                        "failure_fingerprint": fingerprint,
+                        "task_id": failed_task_id,
+                        "plan_version": plan_version,
+                        "strategy": proposal.reason or "atomic_patch_retest",
+                    },
+                    correlation_id=f"corr-{self.space_id}-{failed_task_id}",
+                    taint=True,
+                )
+            )
+
+        # 11. Construct Bounded PlanDelta (REPAIR-002, REPAIR-004)
+        patch_task_id = f"repair-{failed_task_id}-iter-{new_iteration}"
+        retest_task_id = f"retest-{failed_task_id}-iter-{new_iteration}"
+
+        delta_ops: list[dict[str, Any]] = [
+            # Rollback failed test node to record replan
+            {
+                "op": "rollback",
+                "target_node_id": failed_task_id,
+                "params": {
+                    "reason": f"Repair attempt {new_iteration}/{self.MAX_REPAIR_ITERATIONS}",
+                    "repair_iteration": new_iteration,
+                    "failure_fingerprint": fingerprint,
+                },
+                "payload": {
+                    "reason": f"Repair attempt {new_iteration}/{self.MAX_REPAIR_ITERATIONS}",
+                    "repair_iteration": new_iteration,
+                    "failure_fingerprint": fingerprint,
+                },
+            },
+
+            # Add atomic patch task
+            {
+                "op": "add",
+                "target_node_id": patch_task_id,
+                "capability": "repository.patch",
+                "state": "ready",
+                "dependencies": [],
+                "params": {
+                    "action": "apply_patch",
+                    "patch": proposal.proposed_patch,
+                    "patch_id": proposal.patch_id,
+                    "target_files": list(proposal.target_files),
+                    "precondition_repo_hash": proposal.precondition_repo_hash,
+                    "repository_root": proposal.metadata.get("repository_root", ""),
+                },
+                "optional": False,
+            },
+            # Add retest task depending on patch task
+            {
+                "op": "add",
+                "target_node_id": retest_task_id,
+                "capability": "test.execute",
+                "state": "pending",
+                "dependencies": [patch_task_id],
+                "params": {
+                    "runner": diagnostic.test_framework or "pytest",
+                    "arguments": proposal.metadata.get("retest_arguments", ["-v"]),
+                    "repository_root": proposal.metadata.get("repository_root", ""),
+                },
+                "optional": False,
+            },
+        ]
+
+        plan_delta = PlanDelta(
+            space_id=self.space_id,
+            base_version=plan_version,
+            resulting_version=plan_version + 1,
+            ops=delta_ops,
+            delta_id=f"repair-{failed_task_id}-delta-{new_iteration}",
+        )
+
+        return ConvergenceProposal(
+            decision=ConvergenceDecision.REPLAN,
+            space_id=self.space_id,
+            plan_version=plan_version,
+            task_id=failed_task_id,
+            reasoning=(
+                f"REPAIR proposed (iteration {new_iteration}/{self.MAX_REPAIR_ITERATIONS}). "
+                f"Diagnostic: {diagnostic.failure_class.value} for task '{failed_task_id}'."
+            ),
+            replan_attempt=new_iteration,
+            repair_iteration=new_iteration,
+            plan_delta=plan_delta,
+            failure_fingerprint=fingerprint,
+            repair_proposal=proposal,
+            repair_diagnostic=diagnostic,
+            adaptation_hints=tuple(adaptation_hints),
+            counterfactual_recommendation=counterfactual_rec,
+            source_experience_id=source_exp_id,
         )
 
     def _propose_replan(
@@ -3279,3 +3635,8 @@ class ConvergenceEngine:
         """
         self._retry_counts.pop(task_id, None)
         self._replan_counts.pop(task_id, None)
+
+    def reset_repair_budget(self, task_id: str) -> None:
+        """Reset repair iteration and fingerprint history for a task (Phase 14.6)."""
+        self._repair_counts.pop(task_id, None)
+        self._repair_fingerprints.pop(task_id, None)

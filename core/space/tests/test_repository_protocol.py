@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
 from datetime import datetime, timezone
+
 import pytest
 
 from core.space.repository_protocol import (
@@ -14,7 +15,6 @@ from core.space.repository_protocol import (
     FileCategory,
     FileMetadata,
     PatchResult,
-    ProjectMetadata,
     RepositoryIdentity,
     RepositoryInspectionResult,
     RepositoryPolicyProtocol,

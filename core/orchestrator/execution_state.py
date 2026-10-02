@@ -20,12 +20,10 @@ Authority rules:
 
 from __future__ import annotations
 
-import json
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Protocol, runtime_checkable
-
 
 # ── Data contracts ────────────────────────────────────────────────────────────
 
@@ -72,6 +70,8 @@ class ConvergenceStateRecord:
     last_failure_class: str | None = None
     last_failure_at: datetime | None = None
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    repair_count: int = 0
+    repair_fingerprints: tuple[str, ...] = field(default_factory=tuple)
 
 
 # ── Protocols ─────────────────────────────────────────────────────────────────
@@ -160,6 +160,18 @@ class ConvergenceStateStore(Protocol):
 
     def get_fingerprints(self, space_id: str, task_id: str) -> frozenset[str]:
         """Return all failure fingerprints for (space, task)."""
+        ...
+
+    def increment_repair(self, space_id: str, task_id: str) -> int:
+        """Atomically increment repair_count and return the new value (REPAIR-001)."""
+        ...
+
+    def add_repair_fingerprint(self, space_id: str, task_id: str, fingerprint: str) -> None:
+        """Append a failure fingerprint to the repair history sequence for (space, task) (REPAIR-002)."""
+        ...
+
+    def get_repair_fingerprints(self, space_id: str, task_id: str) -> tuple[str, ...]:
+        """Return all repair failure fingerprints in chronological order for (space, task)."""
         ...
 
 
@@ -252,6 +264,7 @@ class InMemoryConvergenceStateStore:
         # keyed by (space_id, task_id)
         self._states: dict[tuple[str, str], ConvergenceStateRecord] = {}
         self._fingerprints: dict[tuple[str, str], list[str]] = {}
+        self._repair_fingerprints: dict[tuple[str, str], list[str]] = {}
 
     def _key(self, space_id: str, task_id: str) -> tuple[str, str]:
         return (space_id, task_id)
@@ -270,6 +283,9 @@ class InMemoryConvergenceStateStore:
             self._fingerprints[self._key(record.space_id, record.task_id)] = list(
                 record.failure_fingerprints
             )
+            self._repair_fingerprints[self._key(record.space_id, record.task_id)] = list(
+                record.repair_fingerprints
+            )
 
     def increment_retry(self, space_id: str, task_id: str, failure_class: str | None = None) -> int:
         with self._lock:
@@ -277,6 +293,7 @@ class InMemoryConvergenceStateStore:
             existing = self._states.get(key, ConvergenceStateRecord(space_id=space_id, task_id=task_id))
             now = datetime.now(timezone.utc)
             fps = self._fingerprints.get(key, [])
+            rfps = self._repair_fingerprints.get(key, [])
             updated = ConvergenceStateRecord(
                 space_id=space_id,
                 task_id=task_id,
@@ -286,6 +303,8 @@ class InMemoryConvergenceStateStore:
                 last_failure_class=failure_class or existing.last_failure_class,
                 last_failure_at=now,
                 updated_at=now,
+                repair_count=existing.repair_count,
+                repair_fingerprints=tuple(rfps),
             )
             self._states[key] = updated
             return updated.retry_count
@@ -296,6 +315,7 @@ class InMemoryConvergenceStateStore:
             existing = self._states.get(key, ConvergenceStateRecord(space_id=space_id, task_id=task_id))
             now = datetime.now(timezone.utc)
             fps = self._fingerprints.get(key, [])
+            rfps = self._repair_fingerprints.get(key, [])
             updated = ConvergenceStateRecord(
                 space_id=space_id,
                 task_id=task_id,
@@ -305,6 +325,8 @@ class InMemoryConvergenceStateStore:
                 last_failure_class=existing.last_failure_class,
                 last_failure_at=existing.last_failure_at,
                 updated_at=now,
+                repair_count=existing.repair_count,
+                repair_fingerprints=tuple(rfps),
             )
             self._states[key] = updated
             return updated.replan_count
@@ -318,6 +340,7 @@ class InMemoryConvergenceStateStore:
             # Update stored record to keep fingerprints in sync
             existing = self._states.get(key, ConvergenceStateRecord(space_id=space_id, task_id=task_id))
             now = datetime.now(timezone.utc)
+            rfps = self._repair_fingerprints.get(key, [])
             updated = ConvergenceStateRecord(
                 space_id=space_id,
                 task_id=task_id,
@@ -327,12 +350,62 @@ class InMemoryConvergenceStateStore:
                 last_failure_class=existing.last_failure_class,
                 last_failure_at=existing.last_failure_at,
                 updated_at=now,
+                repair_count=existing.repair_count,
+                repair_fingerprints=tuple(rfps),
             )
             self._states[key] = updated
 
     def get_fingerprints(self, space_id: str, task_id: str) -> frozenset[str]:
         with self._lock:
             return frozenset(self._fingerprints.get(self._key(space_id, task_id), []))
+
+    def increment_repair(self, space_id: str, task_id: str) -> int:
+        with self._lock:
+            key = self._key(space_id, task_id)
+            existing = self._states.get(key, ConvergenceStateRecord(space_id=space_id, task_id=task_id))
+            now = datetime.now(timezone.utc)
+            fps = self._fingerprints.get(key, [])
+            rfps = self._repair_fingerprints.get(key, [])
+            updated = ConvergenceStateRecord(
+                space_id=space_id,
+                task_id=task_id,
+                retry_count=existing.retry_count,
+                replan_count=existing.replan_count,
+                failure_fingerprints=tuple(fps),
+                last_failure_class=existing.last_failure_class,
+                last_failure_at=existing.last_failure_at,
+                updated_at=now,
+                repair_count=existing.repair_count + 1,
+                repair_fingerprints=tuple(rfps),
+            )
+            self._states[key] = updated
+            return updated.repair_count
+
+    def add_repair_fingerprint(self, space_id: str, task_id: str, fingerprint: str) -> None:
+        with self._lock:
+            key = self._key(space_id, task_id)
+            rfps = self._repair_fingerprints.setdefault(key, [])
+            rfps.append(fingerprint)
+            existing = self._states.get(key, ConvergenceStateRecord(space_id=space_id, task_id=task_id))
+            now = datetime.now(timezone.utc)
+            fps = self._fingerprints.get(key, [])
+            updated = ConvergenceStateRecord(
+                space_id=space_id,
+                task_id=task_id,
+                retry_count=existing.retry_count,
+                replan_count=existing.replan_count,
+                failure_fingerprints=tuple(fps),
+                last_failure_class=existing.last_failure_class,
+                last_failure_at=existing.last_failure_at,
+                updated_at=now,
+                repair_count=existing.repair_count,
+                repair_fingerprints=tuple(rfps),
+            )
+            self._states[key] = updated
+
+    def get_repair_fingerprints(self, space_id: str, task_id: str) -> tuple[str, ...]:
+        with self._lock:
+            return tuple(self._repair_fingerprints.get(self._key(space_id, task_id), []))
 
     def all_states(self) -> list[ConvergenceStateRecord]:
         """Test helper: return all stored records."""
