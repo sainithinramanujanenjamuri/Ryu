@@ -339,6 +339,8 @@ class TestRunnerWorker(BaseWorker):
             "provenance_canonical_hash": prov.canonical_hash,
             "associated_patch_id": report.associated_patch_id,
             "tested_repo_hash": report.tested_repo_hash,
+            "stdout": report.stdout_summary,
+            "stderr": report.stderr_summary,
             "taint": True,
         }
 

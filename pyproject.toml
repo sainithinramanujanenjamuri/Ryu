@@ -36,6 +36,7 @@ testpaths = [
     "channels/tests",
     "skills/tests",
     "memory/tests",
+    "workflows/tests",
     "harness/cases",
     "harness/cases/pulse_bus_integration",
 ]
