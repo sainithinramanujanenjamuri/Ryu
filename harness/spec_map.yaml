@@ -1850,5 +1850,130 @@ spec_map:
     roadmap_phase: 14
     evidence_state: "CONTRACT_ONLY"
 
+  # -----------------------------------------------------------------------
+  # Phase 15.1 — Durable PostgreSQL Plan Store & Cold-Boot Reconstruction
+  # -----------------------------------------------------------------------
+
+  - id: PLAN-DURABLE-001
+    title: "Single-Writer Atomic CAS Plan Transitions"
+    architecture_section: "ADR-0045 §4, CONTRACT_MATRIX §9"
+    acceptance_criterion: >
+      Plan updates succeed iff base_version matches DB; loser aborts with plan.version.superseded.
+    contract:
+      file: "core/plans/postgres_plan_store.py"
+      rule: "SELECT FOR UPDATE atomic CAS transition"
+    harness_case: "core/plans/tests/test_postgres_plan_store.py::test_plan_durable_001_atomic_cas_single_winner"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"
+
+  - id: PLAN-DURABLE-002
+    title: "Plan Schema Validation & Graph Integrity"
+    architecture_section: "ADR-0045 §3, CONTRACT_MATRIX §9"
+    acceptance_criterion: >
+      Nodes, edges, capabilities, and dependencies validated; acyclicity enforced before DB persistence.
+    contract:
+      file: "core/plans/serialization.py"
+      rule: "task_graph_from_dict deterministic validation"
+    harness_case: "core/plans/tests/test_postgres_plan_store.py::test_plan_durable_002_schema_validation_and_integrity"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"
+
+  - id: PLAN-DURABLE-003
+    title: "Immutable Append-Only Plan History"
+    architecture_section: "ADR-0045 §5, CONTRACT_MATRIX §9"
+    acceptance_criterion: >
+      Every successful plan transition appends immutable snapshot to plan_history; versions strictly monotonic.
+    contract:
+      file: "core/plans/postgres_plan_store.py"
+      rule: "plan_history append-only audit trail"
+    harness_case: "core/plans/tests/test_postgres_plan_store.py::test_plan_durable_003_immutable_plan_history"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"
+
+  - id: PLAN-DURABLE-004
+    title: "Atomic Transaction Rollback on Failure"
+    architecture_section: "ADR-0045 §4, CONTRACT_MATRIX §9"
+    acceptance_criterion: >
+      Delta failure rolls back entire database transaction; no partial graph state persisted.
+    contract:
+      file: "core/plans/postgres_plan_store.py"
+      rule: "Transactional rollback on error"
+    harness_case: "core/plans/tests/test_postgres_plan_store.py::test_plan_durable_004_atomic_rollback_on_failure"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"
+
+  - id: PLAN-DURABLE-005
+    title: "Strict Space-Scoped Plan Isolation"
+    architecture_section: "ADR-0045 §6, CONTRACT_MATRIX §9"
+    acceptance_criterion: >
+      Mutations and queries strictly scoped by space_id; cross-space leak forbidden.
+    contract:
+      file: "core/plans/postgres_plan_store.py"
+      rule: "WHERE space_id = %s strict tenant boundary"
+    harness_case: "core/plans/tests/test_postgres_plan_store.py::test_plan_durable_005_strict_space_isolation"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"
+
+  - id: PLAN-DURABLE-006
+    title: "Multi-Space Cold-Boot Reconstruction"
+    architecture_section: "ADR-0045 §7, CONTRACT_MATRIX §9"
+    acceptance_criterion: >
+      Process cold boot reconstructs authoritative TaskGraphs for all active spaces from PostgreSQL.
+    contract:
+      file: "core/plans/postgres_plan_store.py"
+      rule: "load_all_plans / restore_graph cold recovery"
+    harness_case: "core/plans/tests/test_postgres_plan_store.py::test_plan_durable_006_multi_space_cold_boot_reconstruction"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"
+
+  - id: PLAN-DURABLE-007
+    title: "Startup Recovery Cold-Boot Integration"
+    architecture_section: "ADR-0045 §7, CONTRACT_MATRIX §9"
+    acceptance_criterion: >
+      Cold boot reconstructs kernel plan graph enabling StartupRecoveryEngine to reconcile interrupted tasks.
+    contract:
+      file: "core/orchestrator/startup_recovery.py"
+      rule: "StartupRecoveryEngine execution attempt reconciliation"
+    harness_case: "core/plans/tests/test_postgres_plan_store.py::test_plan_durable_007_startup_recovery_cold_boot_integration"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"
+
+  - id: PLAN-DURABLE-008
+    title: "Corrupted Graph JSON Fails Closed"
+    architecture_section: "ADR-0045 §3, CONTRACT_MATRIX §9"
+    acceptance_criterion: >
+      Malformed graph payload in DB raises DeserializationError; synthetic or empty graphs prohibited.
+    contract:
+      file: "core/plans/serialization.py"
+      rule: "Fail-closed deserialization integrity"
+    harness_case: "core/plans/tests/test_postgres_plan_store.py::test_plan_durable_008_corrupted_graph_fails_closed"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"
+
+  - id: PLAN-DURABLE-009
+    title: "Missing Space Fails Closed"
+    architecture_section: "ADR-0045 §6, CONTRACT_MATRIX §9"
+    acceptance_criterion: >
+      Accessing uninitialized space in PostgreSQL raises KeyError; fail-closed.
+    contract:
+      file: "core/plans/postgres_plan_store.py"
+      rule: "KeyError on uninitialized space"
+    harness_case: "core/plans/tests/test_postgres_plan_store.py::test_plan_durable_009_missing_space_fails_closed"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"
+
+  - id: PLAN-DURABLE-010
+    title: "Multi-Process Concurrent CAS Contention"
+    architecture_section: "ADR-0045 §4, CONTRACT_MATRIX §9"
+    acceptance_criterion: >
+      Concurrent processes competing on CAS yield exactly one winner without deadlocks.
+    contract:
+      file: "core/plans/postgres_plan_store.py"
+      rule: "SELECT FOR UPDATE row-level lock concurrency"
+    harness_case: "core/plans/tests/test_postgres_plan_store.py::test_plan_durable_010_concurrent_multi_process_cas"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"
+
+
 
 

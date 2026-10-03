@@ -89,12 +89,9 @@ class RecoveryKernelProtocol(Protocol):
     def propose_task_transition(
         self,
         task_id: str,
-        from_state: str,
-        to_state: str,
-        *,
-        error: str | None = None,
-        reason: str = "",
-    ) -> tuple[bool, str]: ...
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any: ...
 
     def get_task_graph(self) -> Any: ...
 
@@ -331,14 +328,16 @@ class StartupRecoveryEngine:
         Returns True if transition succeeded or task was already in a compatible state.
         """
         try:
-            ok, msg = kernel.propose_task_transition(
+            res = kernel.propose_task_transition(
                 record.task_id,
                 from_state,
                 to_state,
                 error=error,
                 reason=reason,
             )
-            return ok
+            if isinstance(res, (tuple, list)) and len(res) > 0:
+                return bool(res[0])
+            return bool(res)
         except Exception:
             # Task may already be in a terminal state — treat as recovered
             return True

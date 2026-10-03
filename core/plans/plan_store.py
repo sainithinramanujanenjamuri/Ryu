@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import threading
 from datetime import datetime, timezone
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from ryu.pulse_bus.pulse import Pulse, Severity
 
@@ -26,6 +26,22 @@ from core.plans.task_graph import (
 
 class PulsePublisher(Protocol):
     def publish(self, pulse: Pulse) -> Pulse: ...
+
+
+@runtime_checkable
+class PlanStoreProtocol(Protocol):
+    """Authoritative Protocol for Plan and TaskGraph persistence (ADR-0045, Phase 15.1)."""
+
+    def init_space_plan(self, space_id: str, nodes: list[TaskNode] | None = None) -> TaskGraph: ...
+    def get_plan_version(self, space_id: str) -> int: ...
+    def get_task_graph(self, space_id: str, version: int | None = None) -> TaskGraph: ...
+    def get_historical_graph(self, space_id: str, version: int) -> TaskGraph | None: ...
+    def commit_delta(
+        self, delta: PlanDelta, proposal_id: str | None = None
+    ) -> tuple[bool, int, str | None]: ...
+    def list_active_spaces(self) -> list[str]: ...
+    def load_all_plans(self) -> dict[str, TaskGraph]: ...
+    def restore_graph(self, graph: TaskGraph, winning_delta: str | None = None) -> None: ...
 
 
 class PlanStore:
@@ -278,3 +294,26 @@ class PlanStore:
                     )
 
             return False, current_ver, winning_id
+
+    def list_active_spaces(self) -> list[str]:
+        """Return all space IDs having plans in memory."""
+        with self._lock:
+            return sorted(list(self._graphs.keys()))
+
+    def load_all_plans(self) -> dict[str, TaskGraph]:
+        """Return clones of all active space plans."""
+        with self._lock:
+            return {sid: self._clone_graph(g) for sid, g in self._graphs.items()}
+
+    def restore_graph(self, graph: TaskGraph, winning_delta: str | None = None) -> None:
+        """Restore a TaskGraph directly into the store."""
+        with self._lock:
+            self._graphs[graph.space_id] = self._clone_graph(graph)
+            if graph.space_id not in self._history:
+                self._history[graph.space_id] = {}
+            self._history[graph.space_id][graph.plan_version] = self._clone_graph(graph)
+            self._last_winning_delta[graph.space_id] = winning_delta or "restore"
+
+
+# Backward-compatible alias
+InMemoryPlanStore = PlanStore

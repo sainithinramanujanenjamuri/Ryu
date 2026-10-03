@@ -22,7 +22,7 @@ from core.capabilities.admission import (
 )
 from core.capabilities.windows import EscalationWindowManager
 from core.plans.delta import PlanDelta
-from core.plans.plan_store import PlanStore
+from core.plans.plan_store import PlanStore, PlanStoreProtocol
 from core.plans.task_graph import TaskGraph, TaskNode
 from core.security.secrets import SecretStore
 from core.space.approver import ApprovalManager, ApprovalRequest, TimeoutClass
@@ -49,6 +49,7 @@ class SpaceKernel:
         budget: float = 0.0,
         budget_policy: str = "hard_stop",
         attention_limit: int = 3,
+        plan_store: PlanStoreProtocol | None = None,
     ) -> None:
         self.space_id = space_id
         self.owner_id = owner_id
@@ -61,7 +62,7 @@ class SpaceKernel:
         self.admission = AdmissionController(bus=self.bus, windows=self.windows)
         self.admission.set_budget(space_id, budget, policy_mode=budget_policy)
 
-        self.plan_store = PlanStore(bus=self.bus)
+        self.plan_store = plan_store if plan_store is not None else PlanStore(bus=self.bus)
         self.plan_store.init_space_plan(space_id)
 
         self.approval_mgr = ApprovalManager(default_approver_id=owner_id, bus=self.bus)
@@ -163,7 +164,7 @@ class SpaceKernel:
         self,
         task_id: str,
         to_state: str,
-        expected_plan_version: int,
+        expected_plan_version: int | str | None = None,
         from_state: str | None = None,
         reason: str = "",
         error: str | None = None,
@@ -173,17 +174,36 @@ class SpaceKernel:
         """Propose a task lifecycle transition via atomic CAS PlanDelta.
 
         Enforces Space isolation, state machine validity, and single-writer CAS.
+        Supports both calling conventions:
+          1. (task_id, to_state, expected_plan_version, from_state=...) / keyword args
+          2. (task_id, from_state, to_state, error=..., reason=...)
         """
+        actual_from: str | None = None
+        actual_to: str = to_state
+        if isinstance(expected_plan_version, str):
+            # Called positionally as: propose_task_transition(task_id, from_state, to_state, ...)
+            actual_from = to_state
+            actual_to = expected_plan_version
+            base_ver = self.get_plan_version()
+        else:
+            actual_to = to_state
+            actual_from = from_state
+            base_ver = (
+                expected_plan_version
+                if isinstance(expected_plan_version, int)
+                else self.get_plan_version()
+            )
+
         delta = PlanDelta(
             space_id=self.space_id,
-            base_version=expected_plan_version,
-            resulting_version=expected_plan_version + 1,
+            base_version=base_ver,
+            resulting_version=base_ver + 1,
             ops=[
                 {
                     "op": "transition",
                     "target_node_id": task_id,
-                    "to_state": to_state,
-                    "from_state": from_state,
+                    "to_state": actual_to,
+                    "from_state": actual_from,
                     "reason": reason,
                     "error": error,
                     "result_ref": result_ref,
@@ -284,8 +304,7 @@ class SpaceKernel:
                 plan_version=pver,
                 nodes=nodes,
             )
-            self.plan_store._graphs[self.space_id] = graph
-            self.plan_store._last_winning_delta[self.space_id] = cid
+            self.plan_store.restore_graph(graph, winning_delta=cid)
 
             if self.bus is not None:
                 self.bus.publish(

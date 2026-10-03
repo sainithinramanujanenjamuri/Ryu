@@ -166,6 +166,16 @@ Contract consumers must not create conflicting local definitions.
 | PLAN-004 | Rebase                  | Losing valid Delta may rebase according to policy.                | `plan_store.py`                 | `test_plan_engine.py`                             | Phase 2 | `UNIT_VERIFIED` |
 | PLAN-005 | In-flight resolution    | Superseded nodes resolve via `finish`, `checkpoint`, or `cancel`. | `inflight_resolve.py`           | `test_plan_engine.py`                             | Phase 2 | `UNIT_VERIFIED` |
 | PLAN-006 | Rebase bound            | Replan storms cannot create unbounded CAS livelock.               | `plan_store.py` (ADR-0003)      | `test_plan_engine.py`                             | Phase 2 | `UNIT_VERIFIED` |
+| PLAN-DURABLE-001 | Single-writer atomic CAS | Plan updates succeed iff base_version matches DB; loser aborted. | `postgres_plan_store.py` | `core/plans/tests/test_postgres_plan_store.py` | Phase 15.1 | `INTEGRATION_VERIFIED` |
+| PLAN-DURABLE-002 | Schema validation & integrity | Nodes & edges strictly validated; acyclicity enforced before DB write. | `serialization.py` | `core/plans/tests/test_postgres_plan_store.py` | Phase 15.1 | `INTEGRATION_VERIFIED` |
+| PLAN-DURABLE-003 | Immutable plan history | Every successful transition appends snapshot to plan_history; versions monotonic. | `postgres_plan_store.py` | `core/plans/tests/test_postgres_plan_store.py` | Phase 15.1 | `INTEGRATION_VERIFIED` |
+| PLAN-DURABLE-004 | Atomic rollback on failure | Delta failure rolls back entire transaction; no partial graph state. | `postgres_plan_store.py` | `core/plans/tests/test_postgres_plan_store.py` | Phase 15.1 | `INTEGRATION_VERIFIED` |
+| PLAN-DURABLE-005 | Strict space isolation | Mutations and queries strictly scoped by space_id; cross-space leak forbidden. | `postgres_plan_store.py` | `core/plans/tests/test_postgres_plan_store.py` | Phase 15.1 | `INTEGRATION_VERIFIED` |
+| PLAN-DURABLE-006 | Cold-boot reconstruction | Process restart reconstructs active TaskGraphs for all active spaces from DB. | `postgres_plan_store.py` | `core/plans/tests/test_postgres_plan_store.py` | Phase 15.1 | `INTEGRATION_VERIFIED` |
+| PLAN-DURABLE-007 | Startup recovery integration | Cold boot reconstructs kernel plan graph enabling StartupRecoveryEngine recovery. | `startup_recovery.py` | `core/plans/tests/test_postgres_plan_store.py` | Phase 15.1 | `INTEGRATION_VERIFIED` |
+| PLAN-DURABLE-008 | Corrupted graph fails closed | Malformed graph payload in DB raises DeserializationError; no synthetic graph. | `serialization.py` | `core/plans/tests/test_postgres_plan_store.py` | Phase 15.1 | `INTEGRATION_VERIFIED` |
+| PLAN-DURABLE-009 | Missing space fails closed | Accessing uninitialized space in PostgreSQL raises KeyError; fail-closed. | `postgres_plan_store.py` | `core/plans/tests/test_postgres_plan_store.py` | Phase 15.1 | `INTEGRATION_VERIFIED` |
+| PLAN-DURABLE-010 | Multi-process concurrent CAS | Concurrent processes competing on CAS yield exactly one winner without deadlocks. | `postgres_plan_store.py` | `core/plans/tests/test_postgres_plan_store.py` | Phase 15.1 | `INTEGRATION_VERIFIED` |
 
 ---
 
