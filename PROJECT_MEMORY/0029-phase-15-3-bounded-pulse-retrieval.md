@@ -52,7 +52,7 @@ Phase 15.3 strictly resolves Finding F-03 without altering the frozen Phase 0 `P
 
 5. **Memory-Safe Replay Engine (`core/pulse_bus/src/ryu/pulse_bus/replay.py`):**
    - Backed `replay_from()` with paginated generator over `store.read_page()` avoiding full-table loading.
-   - Backed `replay_by_space()` with `store.iter_space()` streaming.
+   - Backed `replay_by_space()` with `store.iter_space()` streaming; `iter_space()` uses a PostgreSQL server-side cursor with bounded fetch sizing (`cur.itersize = page_size`), providing the intended bounded-memory traversal design; live PostgreSQL execution remains environment-limited.
 
 6. **Channel Daemon & CLI Migration (`channels/daemon/server.py`, `channels/daemon/history.py`, `channels/cli/commands/audit.py`):**
    - Migrated Channel Daemon `/api/v1/spaces/{space_id}/audit` to `store.read_space_tail()`.

@@ -20,7 +20,7 @@ Prior to Phase 15.3, pulse retrieval methods in PostgreSQL (`read_by_space`, `re
 
 Phase 15.3 introduces monotonic keyset pagination, reverse-scanned tail retrieval with ascending chronological presentation, bounded generator streaming, fast existence probes, and fail-closed safety envelopes on legacy methods.
 
-All executed Phase 15.3 governance, dependency, lint, type-check, and regression gates passed with no reported violations. Live Docker PostgreSQL integration is explicitly documented as limited due to local Docker service availability.
+All executed Phase 15.3 governance, dependency, lint, type-check, and regression gates passed with no reported violations. PostgreSQL query construction and bounded traversal implementation verified; live PostgreSQL integration execution remains unverified due to environment constraints (the local Docker Desktop service was unavailable and could not be started without administrator elevation).
 
 ---
 
@@ -57,6 +57,7 @@ All executed Phase 15.3 governance, dependency, lint, type-check, and regression
 ### 2.5 Replay Engine (`core/pulse_bus/src/ryu/pulse_bus/replay.py`)
 - `replay_from()` streams via paginated generator over `store.read_page()`.
 - `replay_by_space()` streams via `store.iter_space()`.
+- `iter_space()` uses a PostgreSQL server-side cursor with bounded fetch sizing (`cur.itersize = page_size`), providing the intended bounded-memory traversal design; live PostgreSQL execution remains environment-limited.
 
 ### 2.6 Channel Daemon & CLI Consumers (`channels/daemon/`, `channels/cli/`)
 - Channel Daemon `/api/v1/spaces/{space_id}/audit` migrated to `store.read_space_tail()`.
@@ -141,15 +142,28 @@ Total tests: **33** | Passed: **33** | Failed: **0** | Skipped: **0** (100% pass
 
 | Contract ID | Contract Title | Implementation Path | Verification Test | Status |
 |:---|:---|:---|:---|:---|
-| `PULSE-013` | Bounded Space Keyset Pagination | `core/pulse_bus/src/ryu/pulse_bus/store.py` | `test_pbr_001_keyset_pagination_forward` | **INTEGRATION_VERIFIED** |
-| `PULSE-014` | Bounded Tail Retrieval | `core/pulse_bus/src/ryu/pulse_bus/store.py` | `test_pbr_005_read_space_tail_latest_entries` | **INTEGRATION_VERIFIED** |
-| `PULSE-015` | Keyset Generator Streaming | `core/pulse_bus/src/ryu/pulse_bus/store.py` | `test_pbr_009_iter_space_generator_pagination` | **INTEGRATION_VERIFIED** |
-| `PULSE-016` | Fail-Closed Unpaged Envelopes | `core/pulse_bus/src/ryu/pulse_bus/store.py` | `test_pbr_016_legacy_read_by_space_raises_on_overflow` | **INTEGRATION_VERIFIED** |
-| `PULSE-017` | Pulse Existence Probes | `core/pulse_bus/src/ryu/pulse_bus/store.py` | `test_pbr_011_has_pulse_of_type_true` | **INTEGRATION_VERIFIED** |
+| `PULSE-013` | Bounded Space Keyset Pagination | `core/pulse_bus/src/ryu/pulse_bus/store.py` | `test_pbr_001_keyset_pagination_forward` | **UNIT_VERIFIED** |
+| `PULSE-014` | Bounded Tail Retrieval | `core/pulse_bus/src/ryu/pulse_bus/store.py` | `test_pbr_005_read_space_tail_latest_entries` | **UNIT_VERIFIED** |
+| `PULSE-015` | Keyset Generator Streaming | `core/pulse_bus/src/ryu/pulse_bus/store.py` | `test_pbr_009_iter_space_generator_pagination` | **UNIT_VERIFIED** |
+| `PULSE-016` | Fail-Closed Unpaged Envelopes | `core/pulse_bus/src/ryu/pulse_bus/store.py` | `test_pbr_016_legacy_read_by_space_raises_on_overflow` | **UNIT_VERIFIED** |
+| `PULSE-017` | Pulse Existence Probes | `core/pulse_bus/src/ryu/pulse_bus/store.py` | `test_pbr_011_has_pulse_of_type_true` | **UNIT_VERIFIED** |
+
+*Note on Status:* PostgreSQL query construction and bounded traversal implementation verified; live PostgreSQL integration execution remains unverified due to environment constraints.
 
 ---
 
-## 6. Deferred Work & Forward Roadmap
+## 6. Final Gate
+
+```text
+GATE-15.3: VERIFIED WITH EXPLICIT LIMITATIONS
+```
+
+### Limitation Statement
+Live end-to-end PostgreSQL integration could not be executed because the local Docker Desktop service was unavailable and could not be started without administrator elevation. PostgreSQL query construction and bounded traversal implementation verified; live PostgreSQL integration execution remains unverified due to environment constraints.
+
+---
+
+## 7. Deferred Work & Forward Roadmap
 
 Phase 15.3 addresses only Finding F-03 (Bounded Pulse Retrieval — P1). All subsequent findings from the Phase 15 Architecture Audit remain unchanged:
 
