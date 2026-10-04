@@ -146,6 +146,7 @@ class Artifact:
     mime_type: str = "text/plain"
     size_bytes: int = 0
     sha256: str = ""
+    space_id: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -156,6 +157,7 @@ class Artifact:
             "mime_type": self.mime_type,
             "size_bytes": self.size_bytes,
             "sha256": self.sha256,
+            "space_id": self.space_id,
             "metadata": self.metadata,
         }
 

@@ -21,6 +21,7 @@ from typing import Any
 from ryu.pulse_bus.bus import PulseBus
 from ryu.pulse_bus.pulse import Pulse, Severity
 
+from core.space.artifact_paths import get_space_artifact_dir, resolve_artifact_path
 from core.space.research_protocol import (
     ProvenanceRecord,
     SourceIdentity,
@@ -242,20 +243,24 @@ class TestRunnerWorker(BaseWorker):
         # 6. Content-Addressed Artifacts & Lineage (EVIDENCE-003)
         artifacts: list[Artifact] = []
         if self.base_working_dir:
-            art_dir = self.base_working_dir / "artifacts" / "test_runner"
+            art_dir = get_space_artifact_dir(self.base_working_dir, request.space_id, "test_runner")
             art_dir.mkdir(parents=True, exist_ok=True)
 
             # Report artifact
-            rep_path = art_dir / f"{request.task_id}_test_report.json"
-            rep_path.write_text(report_json, encoding="utf-8")
+            rep_path = resolve_artifact_path(
+                self.base_working_dir, request.space_id, "test_runner", f"{request.task_id}_test_report.json"
+            )
+            rep_bytes = report_json.encode("utf-8")
+            rep_path.write_bytes(rep_bytes)
             artifacts.append(
                 Artifact(
                     artifact_id=f"art-{request.task_id}-test-report",
                     name=f"{request.task_id}_test_report.json",
                     path=str(rep_path),
                     mime_type="application/json",
-                    size_bytes=len(report_json.encode("utf-8")),
-                    sha256=report_hash,
+                    size_bytes=len(rep_bytes),
+                    sha256=compute_sha256(rep_bytes),
+                    space_id=request.space_id,
                     metadata={
                         "provenance_id": prov.provenance_id,
                         "status": report.status.value,
@@ -269,7 +274,9 @@ class TestRunnerWorker(BaseWorker):
 
             # Stdout artifact
             stdout_bytes = report.stdout_summary.encode("utf-8")
-            stdout_path = art_dir / f"{request.task_id}_test_stdout.log"
+            stdout_path = resolve_artifact_path(
+                self.base_working_dir, request.space_id, "test_runner", f"{request.task_id}_test_stdout.log"
+            )
             stdout_path.write_bytes(stdout_bytes)
             artifacts.append(
                 Artifact(
@@ -279,6 +286,7 @@ class TestRunnerWorker(BaseWorker):
                     mime_type="text/plain",
                     size_bytes=len(stdout_bytes),
                     sha256=compute_sha256(stdout_bytes),
+                    space_id=request.space_id,
                     metadata={"provenance_id": prov.provenance_id},
                 )
             )
@@ -286,16 +294,20 @@ class TestRunnerWorker(BaseWorker):
             # Failures trace artifact (if failures occurred)
             if report.failures:
                 fail_json = json.dumps(report_dict["failures"], indent=2)
-                fail_path = art_dir / f"{request.task_id}_test_failures.json"
-                fail_path.write_text(fail_json, encoding="utf-8")
+                fail_path = resolve_artifact_path(
+                    self.base_working_dir, request.space_id, "test_runner", f"{request.task_id}_test_failures.json"
+                )
+                fail_bytes = fail_json.encode("utf-8")
+                fail_path.write_bytes(fail_bytes)
                 artifacts.append(
                     Artifact(
                         artifact_id=f"art-{request.task_id}-test-failures",
                         name=f"{request.task_id}_test_failures.json",
                         path=str(fail_path),
                         mime_type="application/json",
-                        size_bytes=len(fail_json.encode("utf-8")),
-                        sha256=compute_sha256(fail_json),
+                        size_bytes=len(fail_bytes),
+                        sha256=compute_sha256(fail_bytes),
+                        space_id=request.space_id,
                         metadata={"provenance_id": prov.provenance_id, "failed_count": len(report.failures)},
                     )
                 )

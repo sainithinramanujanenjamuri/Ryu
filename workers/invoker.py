@@ -247,8 +247,11 @@ class RuntimeWorkerInvoker:
         # Forward-only taint: if input was tainted or result is tainted, taint is True
         effective_taint = res.taint or request.is_tainted
 
-        # Collect artifact identifiers / paths
-        artifact_refs = [art.artifact_id or art.path for art in res.artifacts]
+        # Collect artifact identifiers / paths / metadata
+        artifact_refs = [
+            art.to_dict() if hasattr(art, "to_dict") else (art.artifact_id or getattr(art, "path", str(art)))
+            for art in res.artifacts
+        ]
 
         duration = res.metrics.duration_seconds if res.metrics else 0.0
         err_msg = res.error.message if res.error else None

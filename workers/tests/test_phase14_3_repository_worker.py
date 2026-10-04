@@ -602,8 +602,8 @@ def test_full_pipeline_repository_inspection() -> None:
         assert comp_res.verification.is_valid is True
         assert comp_res.verification.tainted is True  # Mandatory taint invariant preserved
 
-        # 4. Check Artifacts on Disk
-        manifest_art_path = base_working_dir / "artifacts" / "repository" / "task-repo-inspect-1_manifest.json"
+        # 4. Check Artifacts on Disk (Space-Partitioned F-02)
+        manifest_art_path = base_working_dir / "artifacts" / space_id / "repository" / "task-repo-inspect-1_manifest.json"
         assert manifest_art_path.exists()
         manifest_data = json.loads(manifest_art_path.read_text(encoding="utf-8"))
         assert manifest_data["repository_id"] == "repo-slice-01"

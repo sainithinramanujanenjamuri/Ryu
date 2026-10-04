@@ -94,6 +94,7 @@ class FileWorker(BaseWorker):
                 mime_type="text/plain",
                 size_bytes=size,
                 sha256=sha,
+                space_id=request.space_id,
             )
             return ExecutionResult(
                 request_id=request.request_id,

@@ -57,7 +57,13 @@ class PythonWorker(BaseWorker):
                 error=err,
             )
 
-        working_dir = self.base_working_dir or Path(tempfile.mkdtemp(prefix="ryu_py_"))
+        if self.base_working_dir:
+            if self.base_working_dir.name == request.space_id or request.space_id in self.base_working_dir.parts:
+                working_dir = self.base_working_dir
+            else:
+                working_dir = self.base_working_dir / request.space_id
+        else:
+            working_dir = Path(tempfile.mkdtemp(prefix="ryu_py_"))
         working_dir.mkdir(parents=True, exist_ok=True)
 
         sandbox = SandboxManager(
@@ -100,7 +106,8 @@ class PythonWorker(BaseWorker):
             )
 
         # Write code to isolated file
-        script_path = working_dir / "execution_payload.py"
+        payload_name = f"{request.task_id}_execution_payload.py" if request.task_id else "execution_payload.py"
+        script_path = working_dir / payload_name
         script_path.write_text(preamble + code, encoding="utf-8")
 
         # Execute using the running Python interpreter

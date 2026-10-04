@@ -1974,6 +1974,20 @@ spec_map:
     roadmap_phase: 15
     evidence_state: "INTEGRATION_VERIFIED"
 
+  # -----------------------------------------------------------------------
+  # Phase 15.2 — Space-Safe Artifact Namespace Isolation (F-02)
+  # -----------------------------------------------------------------------
 
-
-
+  - id: SPACE-ART-001
+    title: "Space-Safe Artifact Namespace Isolation"
+    architecture_section: "docs/Architecture §4, CONTRACT_MATRIX §5, ADR-0046"
+    acceptance_criterion: >
+      All capability-generated filesystem artifacts must be strictly scoped to
+      <base_working_dir>/artifacts/<space_id>/<worker_namespace>/<filename>.
+      Any artifact outside the Space namespace is rejected by Dispatcher verification.
+    contract:
+      file: "core/space/artifact_paths.py"
+      rule: "Artifact containment within <base_dir>/artifacts/<space_id>"
+    harness_case: "workers/tests/test_phase15_2_artifact_isolation.py"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"

@@ -103,9 +103,10 @@ The following rules apply to every contract.
 | SPACE-001 | Space isolation              | Space A cannot access Space B's memory without an authorized promotion path.         | Space Kernel / Memory   | `test_space_isolation.py`               | Phase 2 / 10 | `GATE_VERIFIED`        |
 | SPACE-002 | Space resource isolation     | Resource grants are scoped to the owning Space.                                      | Resource Manager        | `test_space_future.py` (`test_space_resource_isolation`) | Phase 3 / 7  | `GATE_VERIFIED`        |
 | SPACE-003 | Space agent isolation        | Agent state/subscriptions cannot cross Space boundary without defined authorization. | Space / Agent boundary  | Isolation suite                         | Phase 2 / 4  | `GATE_VERIFIED`        |
-| SPACE-004 | Space artifact isolation     | Artifacts remain scoped to their Space unless explicitly promoted/exported.          | Artifact / Memory layer | Isolation suite                         | Phase 2+     | `SPECIFIED`            |
+| SPACE-004 | Space artifact isolation     | Artifacts remain scoped to their Space unless explicitly promoted/exported.          | `core/space/artifact_paths.py`, `workers/` | `workers/tests/test_phase15_2_artifact_isolation.py` | Phase 2 / 15.2 | `INTEGRATION_VERIFIED` |
 | SPACE-005 | Space subscription isolation | Pulse subscriptions cannot observe another Space without authorization.              | Pulse Bus               | `test_misc.py` (`test_space_scoped_retrieval`) | Phase 1 / 2  | `INTEGRATION_VERIFIED` |
 | SPACE-006 | Space identity               | Every execution has an unambiguous Space identity.                                   | Space Kernel            | `test_space_isolation.py`, `test_kernel.py` | Phase 2      | `GATE_VERIFIED`        |
+| SPACE-ART-001 | Space-Safe Artifact Namespace Isolation | All capability artifacts strictly scoped to `<base_dir>/artifacts/<space_id>/<worker_ns>/<filename>`; non-space artifacts rejected by Dispatcher. | `core/space/artifact_paths.py`, `core/orchestrator/dispatch_model.py`, `workers/` | `workers/tests/test_phase15_2_artifact_isolation.py` | Phase 15.2   | `INTEGRATION_VERIFIED` |
 
 ---
 

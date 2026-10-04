@@ -23,6 +23,7 @@ from ryu.pulse_bus.bus import PulseBus
 from ryu.pulse_bus.pulse import Pulse, Severity
 
 from core.resources.manager import ResourceManager
+from core.space.artifact_paths import get_space_artifact_dir, resolve_artifact_path
 from core.space.research_protocol import (
     DefaultDenySourcePolicy,
     EvidenceRelationship,
@@ -402,11 +403,13 @@ class ResearchWorker(BaseWorker):
         # 9. Artifact Persistence (if working directory is available)
         artifacts: list[Artifact] = []
         if self.base_working_dir:
-            artifact_dir = self.base_working_dir / "artifacts" / "research"
+            artifact_dir = get_space_artifact_dir(self.base_working_dir, request.space_id, "research")
             artifact_dir.mkdir(parents=True, exist_ok=True)
 
-            raw_file = artifact_dir / f"{request.task_id}_raw.txt"
-            raw_file.write_text(doc.raw_content, encoding="utf-8")
+            raw_file = resolve_artifact_path(
+                self.base_working_dir, request.space_id, "research", f"{request.task_id}_raw.txt"
+            )
+            raw_file.write_bytes(doc.content_bytes)
             raw_art = Artifact(
                 artifact_id=f"art-{request.task_id}-raw",
                 name=f"{request.task_id}_raw.txt",
@@ -414,12 +417,15 @@ class ResearchWorker(BaseWorker):
                 mime_type=doc.media_type,
                 size_bytes=len(doc.content_bytes),
                 sha256=doc.content_hash,
+                space_id=request.space_id,
                 metadata={"provenance_id": raw_prov.provenance_id},
             )
             artifacts.append(raw_art)
 
-            ext_file = artifact_dir / f"{request.task_id}_extracted.txt"
-            ext_file.write_text(extracted_text, encoding="utf-8")
+            ext_file = resolve_artifact_path(
+                self.base_working_dir, request.space_id, "research", f"{request.task_id}_extracted.txt"
+            )
+            ext_file.write_bytes(extracted_text.encode("utf-8"))
             ext_art = Artifact(
                 artifact_id=f"art-{request.task_id}-ext",
                 name=f"{request.task_id}_extracted.txt",
@@ -427,6 +433,7 @@ class ResearchWorker(BaseWorker):
                 mime_type="text/plain",
                 size_bytes=len(ext_bytes),
                 sha256=ext_hash,
+                space_id=request.space_id,
                 metadata={"provenance_id": ext_prov.provenance_id},
             )
             artifacts.append(ext_art)
@@ -708,33 +715,41 @@ class ResearchWorker(BaseWorker):
         # 4. Artifact generation (if base working dir is set)
         artifacts: list[Artifact] = []
         if self.base_working_dir:
-            artifact_dir = self.base_working_dir / "artifacts" / "research"
+            artifact_dir = get_space_artifact_dir(self.base_working_dir, request.space_id, "research")
             artifact_dir.mkdir(parents=True, exist_ok=True)
 
-            report_file = artifact_dir / f"{request.task_id}_synthesis_report.json"
-            report_file.write_text(report_json, encoding="utf-8")
+            report_file = resolve_artifact_path(
+                self.base_working_dir, request.space_id, "research", f"{request.task_id}_synthesis_report.json"
+            )
+            report_bytes = report_json.encode("utf-8")
+            report_file.write_bytes(report_bytes)
             artifacts.append(
                 Artifact(
                     artifact_id=f"art-{request.task_id}-report",
                     name=f"{request.task_id}_synthesis_report.json",
                     path=str(report_file),
                     mime_type="application/json",
-                    size_bytes=len(report_json.encode("utf-8")),
-                    sha256=synth_report_hash,
+                    size_bytes=len(report_bytes),
+                    sha256=compute_sha256(report_bytes),
+                    space_id=request.space_id,
                     metadata={"synthesis_id": synthesis.synthesis_id, "provenance_id": synth_prov.provenance_id},
                 )
             )
 
-            summary_file = artifact_dir / f"{request.task_id}_synthesis_summary.md"
-            summary_file.write_text(synthesis.summary, encoding="utf-8")
+            summary_file = resolve_artifact_path(
+                self.base_working_dir, request.space_id, "research", f"{request.task_id}_synthesis_summary.md"
+            )
+            summary_bytes = synthesis.summary.encode("utf-8")
+            summary_file.write_bytes(summary_bytes)
             artifacts.append(
                 Artifact(
                     artifact_id=f"art-{request.task_id}-summary",
                     name=f"{request.task_id}_synthesis_summary.md",
                     path=str(summary_file),
                     mime_type="text/markdown",
-                    size_bytes=len(synthesis.summary.encode("utf-8")),
-                    sha256=compute_sha256(synthesis.summary),
+                    size_bytes=len(summary_bytes),
+                    sha256=compute_sha256(summary_bytes),
+                    space_id=request.space_id,
                     metadata={"synthesis_id": synthesis.synthesis_id, "provenance_id": synth_prov.provenance_id},
                 )
             )

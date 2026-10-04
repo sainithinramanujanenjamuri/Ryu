@@ -650,9 +650,9 @@ def test_full_pipeline_research_execution(local_test_server: dict[str, Any]) -> 
         assert comp_res.verification.is_valid is True
         assert comp_res.verification.tainted is True  # Mandatory taint invariant preserved
 
-        # 4. Check Artifacts on Disk
-        raw_art_path = base_dir / "artifacts" / "research" / "task-research-1_raw.txt"
-        ext_art_path = base_dir / "artifacts" / "research" / "task-research-1_extracted.txt"
+        # 4. Check Artifacts on Disk (Space-Partitioned F-02)
+        raw_art_path = base_dir / "artifacts" / space_id / "research" / "task-research-1_raw.txt"
+        ext_art_path = base_dir / "artifacts" / space_id / "research" / "task-research-1_extracted.txt"
         assert raw_art_path.exists()
         assert ext_art_path.exists()
         assert "Ryu Architecture" in ext_art_path.read_text(encoding="utf-8")

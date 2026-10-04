@@ -101,7 +101,13 @@ class ShellWorker(BaseWorker):
             )
             return ExecutionResult(request_id=request.request_id, status="denied", error=err)
 
-        working_dir = self.base_working_dir or Path(tempfile.mkdtemp(prefix="ryu_sh_"))
+        if self.base_working_dir:
+            if self.base_working_dir.name == request.space_id or request.space_id in self.base_working_dir.parts:
+                working_dir = self.base_working_dir
+            else:
+                working_dir = self.base_working_dir / request.space_id
+        else:
+            working_dir = Path(tempfile.mkdtemp(prefix="ryu_sh_"))
         working_dir.mkdir(parents=True, exist_ok=True)
 
         sandbox = SandboxManager(

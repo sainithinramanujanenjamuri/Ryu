@@ -33,6 +33,7 @@ from core.plans.task_graph import (
 from core.resources.identity import ResourceIdentity
 from core.resources.lease import Lease
 from core.resources.manager import ResourceAcquisitionResult, ResourceManager
+from core.space.artifact_paths import is_safe_artifact_path
 from core.space.memory_protocol import (
     AdaptationLayerProtocol,
     ExperienceHint,
@@ -1593,31 +1594,10 @@ class DeterministicDispatcher:
 
         Enforces:
         - No parent traversal '..' in any path component
-        - Resolves strictly inside base_dir/space_id (or base_dir) if base_dir provided
+        - Resolves strictly inside base_dir/artifacts/space_id or base_dir/space_id if base_dir provided
+        - Strict containment without base_dir fallback (Finding F-02, SPACE-ART-001)
         """
-        clean_path = raw_path.replace("\\", "/").strip()
-        parts = clean_path.split("/")
-        if ".." in parts:
-            return False, None, "Path traversal forbidden ('..' detected)"
-
-        candidate = Path(raw_path)
-        if base_dir is not None:
-            space_root = (base_dir / space_id).resolve()
-            if candidate.is_absolute():
-                resolved = candidate.resolve()
-            else:
-                resolved = (space_root / raw_path).resolve()
-
-            # Ensure resolved path is within space_root or base_dir
-            try:
-                resolved.relative_to(space_root)
-            except ValueError:
-                try:
-                    resolved.relative_to(base_dir.resolve())
-                except ValueError:
-                    return False, None, f"Artifact path escapes space sandbox boundary: {resolved}"
-            return True, resolved, None
-        return True, candidate, None
+        return is_safe_artifact_path(raw_path, base_dir, space_id)
 
     @staticmethod
     def _verify_artifact_sha256(

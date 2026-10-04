@@ -25,6 +25,7 @@ from ryu.pulse_bus.bus import PulseBus
 from ryu.pulse_bus.pulse import Pulse, Severity
 
 from core.resources.manager import ResourceManager
+from core.space.artifact_paths import get_space_artifact_dir, resolve_artifact_path
 from core.space.repository_protocol import (
     CodePatch,
     FileTooLargeError,
@@ -346,9 +347,11 @@ class RepositoryWorker(BaseWorker):
 
         artifacts: list[Artifact] = []
         if self.base_working_dir:
-            art_dir = self.base_working_dir / "artifacts" / "repository"
+            art_dir = get_space_artifact_dir(self.base_working_dir, request.space_id, "repository")
             art_dir.mkdir(parents=True, exist_ok=True)
-            manifest_path = art_dir / f"{request.task_id}_manifest.json"
+            manifest_path = resolve_artifact_path(
+                self.base_working_dir, request.space_id, "repository", f"{request.task_id}_manifest.json"
+            )
 
             manifest_dict = {
                 "snapshot_id": snapshot.snapshot_id,
@@ -374,14 +377,16 @@ class RepositoryWorker(BaseWorker):
                 },
             }
             manifest_json = json.dumps(manifest_dict, indent=2)
-            manifest_path.write_text(manifest_json, encoding="utf-8")
+            manifest_bytes = manifest_json.encode("utf-8")
+            manifest_path.write_bytes(manifest_bytes)
             manifest_art = Artifact(
                 artifact_id=f"art-{request.task_id}-manifest",
                 name=f"{request.task_id}_manifest.json",
                 path=str(manifest_path),
                 mime_type="application/json",
-                size_bytes=len(manifest_json.encode("utf-8")),
-                sha256=compute_sha256(manifest_json),
+                size_bytes=len(manifest_bytes),
+                sha256=compute_sha256(manifest_bytes),
+                space_id=request.space_id,
                 metadata={"provenance_id": prov.provenance_id},
             )
             artifacts.append(manifest_art)
@@ -573,11 +578,13 @@ class RepositoryWorker(BaseWorker):
 
         artifacts: list[Artifact] = []
         if self.base_working_dir:
-            art_dir = self.base_working_dir / "artifacts" / "repository"
+            art_dir = get_space_artifact_dir(self.base_working_dir, request.space_id, "repository")
             art_dir.mkdir(parents=True, exist_ok=True)
 
             # 1. Raw diff artifact
-            diff_path = art_dir / f"{request.task_id}_patch.diff"
+            diff_path = resolve_artifact_path(
+                self.base_working_dir, request.space_id, "repository", f"{request.task_id}_patch.diff"
+            )
             diff_path.write_bytes(diff_bytes)
             artifacts.append(
                 Artifact(
@@ -587,6 +594,7 @@ class RepositoryWorker(BaseWorker):
                     mime_type="text/x-diff",
                     size_bytes=len(diff_bytes),
                     sha256=diff_sha,
+                    space_id=request.space_id,
                     metadata={"patch_id": patch_id, "provenance_id": patch_prov.provenance_id},
                 )
             )
@@ -608,17 +616,21 @@ class RepositoryWorker(BaseWorker):
                 "error": result.error,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
-            manifest_path = art_dir / f"{request.task_id}_patch_manifest.json"
+            manifest_path = resolve_artifact_path(
+                self.base_working_dir, request.space_id, "repository", f"{request.task_id}_patch_manifest.json"
+            )
             manifest_json = json.dumps(manifest_dict, indent=2)
-            manifest_path.write_text(manifest_json, encoding="utf-8")
+            manifest_bytes = manifest_json.encode("utf-8")
+            manifest_path.write_bytes(manifest_bytes)
             artifacts.append(
                 Artifact(
                     artifact_id=f"art-{request.task_id}-patch-manifest",
                     name=f"{request.task_id}_patch_manifest.json",
                     path=str(manifest_path),
                     mime_type="application/json",
-                    size_bytes=len(manifest_json.encode("utf-8")),
-                    sha256=compute_sha256(manifest_json),
+                    size_bytes=len(manifest_bytes),
+                    sha256=compute_sha256(manifest_bytes),
+                    space_id=request.space_id,
                     metadata={"patch_id": patch_id, "state": result.state.value, "provenance_id": patch_prov.provenance_id},
                 )
             )
@@ -634,17 +646,21 @@ class RepositoryWorker(BaseWorker):
                     "reason": result.error or "Automatic rollback triggered by patch verification failure",
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
-                rb_path = art_dir / f"{request.task_id}_rollback_manifest.json"
+                rb_path = resolve_artifact_path(
+                    self.base_working_dir, request.space_id, "repository", f"{request.task_id}_rollback_manifest.json"
+                )
                 rb_json = json.dumps(rb_dict, indent=2)
-                rb_path.write_text(rb_json, encoding="utf-8")
+                rb_bytes = rb_json.encode("utf-8")
+                rb_path.write_bytes(rb_bytes)
                 artifacts.append(
                     Artifact(
                         artifact_id=f"art-{request.task_id}-rollback-manifest",
                         name=f"{request.task_id}_rollback_manifest.json",
                         path=str(rb_path),
                         mime_type="application/json",
-                        size_bytes=len(rb_json.encode("utf-8")),
-                        sha256=compute_sha256(rb_json),
+                        size_bytes=len(rb_bytes),
+                        sha256=compute_sha256(rb_bytes),
+                        space_id=request.space_id,
                         metadata={"patch_id": patch_id, "rollback_verified": result.rollback_verified},
                     )
                 )
@@ -790,7 +806,7 @@ class RepositoryWorker(BaseWorker):
 
         artifacts: list[Artifact] = []
         if self.base_working_dir:
-            art_dir = self.base_working_dir / "artifacts" / "repository"
+            art_dir = get_space_artifact_dir(self.base_working_dir, request.space_id, "repository")
             art_dir.mkdir(parents=True, exist_ok=True)
             rb_dict = {
                 "patch_id": result.patch_id,
@@ -803,17 +819,21 @@ class RepositoryWorker(BaseWorker):
                 "reason": reason,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
-            rb_path = art_dir / f"{request.task_id}_rollback_manifest.json"
+            rb_path = resolve_artifact_path(
+                self.base_working_dir, request.space_id, "repository", f"{request.task_id}_rollback_manifest.json"
+            )
             rb_json = json.dumps(rb_dict, indent=2)
-            rb_path.write_text(rb_json, encoding="utf-8")
+            rb_bytes = rb_json.encode("utf-8")
+            rb_path.write_bytes(rb_bytes)
             artifacts.append(
                 Artifact(
                     artifact_id=f"art-{request.task_id}-rollback-manifest",
                     name=f"{request.task_id}_rollback_manifest.json",
                     path=str(rb_path),
                     mime_type="application/json",
-                    size_bytes=len(rb_json.encode("utf-8")),
-                    sha256=compute_sha256(rb_json),
+                    size_bytes=len(rb_bytes),
+                    sha256=compute_sha256(rb_bytes),
+                    space_id=request.space_id,
                     metadata={
                         "patch_id": patch_id,
                         "rollback_verified": result.rollback_verified,
