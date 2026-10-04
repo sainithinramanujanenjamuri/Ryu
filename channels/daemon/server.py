@@ -1006,7 +1006,23 @@ class DaemonHTTPServer(ThreadingHTTPServer):
 
     def get_audit(self, space_id: str, limit: int = 50, pulse_type: str | None = None) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
-        if self.pulse_store is not None and hasattr(self.pulse_store, "read_by_space"):
+        if self.pulse_store is not None and hasattr(self.pulse_store, "read_space_tail"):
+            try:
+                types = frozenset([pulse_type]) if pulse_type else None
+                page = self.pulse_store.read_space_tail(space_id, limit=limit, pulse_types=types)
+                for sp in reversed(page.entries):
+                    p = sp.pulse
+                    results.append({
+                        "id": getattr(p, "id", None),
+                        "type": getattr(p, "type", ""),
+                        "severity": str(getattr(p, "severity", "")),
+                        "timestamp": str(getattr(p, "timestamp", "")),
+                        "payload": getattr(p, "payload", {}),
+                        "taint": bool(getattr(p, "taint", False)),
+                    })
+            except Exception as e:
+                logger.error(f"Audit query failed: {e}")
+        elif self.pulse_store is not None and hasattr(self.pulse_store, "read_by_space"):
             try:
                 pulses = self.pulse_store.read_by_space(space_id)
                 for p in reversed(pulses):

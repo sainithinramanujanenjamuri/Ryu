@@ -1991,3 +1991,67 @@ spec_map:
     harness_case: "workers/tests/test_phase15_2_artifact_isolation.py"
     roadmap_phase: 15
     evidence_state: "INTEGRATION_VERIFIED"
+
+  # -----------------------------------------------------------------------
+  # Phase 15.3 — Bounded Pulse Retrieval (F-03)
+  # -----------------------------------------------------------------------
+
+  - id: PULSE-013
+    title: "Bounded Space Retrieval"
+    architecture_section: "docs/Architecture §3, CONTRACT_MATRIX §6, ADR-0047"
+    acceptance_criterion: >
+      No ordinary PulseStore Space read materializes more than MAX_PULSE_PAGE_SIZE pulses.
+    contract:
+      file: "core/pulse_bus/src/ryu/pulse_bus/store.py"
+      rule: "Maximum page size enforced on single query materialization"
+    harness_case: "core/pulse_bus/tests/test_phase15_3_bounded_pulse_retrieval.py"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"
+
+  - id: PULSE-014
+    title: "Deterministic Keyset Order & Space Isolation"
+    architecture_section: "docs/Architecture §3, CONTRACT_MATRIX §6, ADR-0047"
+    acceptance_criterion: >
+      Space pages are ordered by position ASC with keyset cursor and strict space_id scoping.
+    contract:
+      file: "core/pulse_bus/src/ryu/pulse_bus/store.py"
+      rule: "Keyset pagination over position with space_id predicate"
+    harness_case: "core/pulse_bus/tests/test_phase15_3_bounded_pulse_retrieval.py"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"
+
+  - id: PULSE-015
+    title: "Complete Bounded Traversal"
+    architecture_section: "docs/Architecture §3, CONTRACT_MATRIX §6, ADR-0047"
+    acceptance_criterion: >
+      iter_space yields every pulse in order from one snapshot with O(page) memory.
+    contract:
+      file: "core/pulse_bus/src/ryu/pulse_bus/store.py"
+      rule: "Single-snapshot streaming iterator over pulse sequence"
+    harness_case: "core/pulse_bus/tests/test_phase15_3_bounded_pulse_retrieval.py"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"
+
+  - id: PULSE-016
+    title: "Fail-Closed Bounds Validation"
+    architecture_section: "docs/Architecture §3, CONTRACT_MATRIX §6, ADR-0047"
+    acceptance_criterion: >
+      Invalid, zero, negative, oversized, or type-confused limits/cursors are rejected before I/O.
+    contract:
+      file: "core/pulse_bus/src/ryu/pulse_bus/store.py"
+      rule: "Pre-execution validation of limits and position cursors"
+    harness_case: "core/pulse_bus/tests/test_phase15_3_bounded_pulse_retrieval.py"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"
+
+  - id: PULSE-017
+    title: "No Silent Truncation on Legacy Reads"
+    architecture_section: "docs/Architecture §3, CONTRACT_MATRIX §6, ADR-0047"
+    acceptance_criterion: >
+      Legacy unpaged reads raise PulseRetrievalBoundExceeded above cap rather than returning partial history.
+    contract:
+      file: "core/pulse_bus/src/ryu/pulse_bus/store.py"
+      rule: "Fail-closed threshold detection on unpaged retrieval methods"
+    harness_case: "core/pulse_bus/tests/test_phase15_3_bounded_pulse_retrieval.py"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"

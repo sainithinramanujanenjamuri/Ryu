@@ -126,6 +126,11 @@ The following rules apply to every contract.
 | PULSE-010 | Schema fuzzing               | Invalid mutations are rejected; valid generated Pulses are accepted.  | JSON schemas                    | Generated validators  | `test_schema_fuzz.py`                   | Phase 1     | `UNIT_VERIFIED`        |
 | PULSE-011 | Registry/codegen consistency | Generated validators match machine-readable contracts.                | Registry + codegen              | Codegen pipeline      | `test_validator_uses_generated_types.py`| Phase 1     | `UNIT_VERIFIED`        |
 | PULSE-012 | Unknown type rejection       | No unregistered type may enter the durable log.                       | Registry                        | Pulse Bus             | `test_registry_rejects_unknown_type.py` | Phase 0     | `UNIT_VERIFIED`        |
+| PULSE-013 | Bounded Space retrieval      | No ordinary PulseStore Space read materializes more than MAX_PULSE_PAGE_SIZE pulses. | Pulse store interface           | `store.py`            | `core/pulse_bus/tests/test_phase15_3_bounded_pulse_retrieval.py` | Phase 15.3  | `INTEGRATION_VERIFIED` |
+| PULSE-014 | Deterministic keyset order   | Space pages are ordered by position ASC with keyset cursor and strict space_id scoping. | Keyset contract                 | `store.py`            | `core/pulse_bus/tests/test_phase15_3_bounded_pulse_retrieval.py` | Phase 15.3  | `INTEGRATION_VERIFIED` |
+| PULSE-015 | Complete bounded traversal   | `iter_space` yields every pulse in order from one snapshot with O(page) memory.       | Traversal contract              | `store.py`            | `core/pulse_bus/tests/test_phase15_3_bounded_pulse_retrieval.py` | Phase 15.3  | `INTEGRATION_VERIFIED` |
+| PULSE-016 | Fail-closed bounds validation| Invalid, zero, negative, oversized, or type-confused limits/cursors are rejected before I/O. | Bounds validation               | `store.py`            | `core/pulse_bus/tests/test_phase15_3_bounded_pulse_retrieval.py` | Phase 15.3  | `INTEGRATION_VERIFIED` |
+| PULSE-017 | No silent truncation         | Legacy unpaged reads raise PulseRetrievalBoundExceeded above cap rather than returning partial history. | Fail-closed envelope            | `store.py`            | `core/pulse_bus/tests/test_phase15_3_bounded_pulse_retrieval.py` | Phase 15.3  | `INTEGRATION_VERIFIED` |
 
 ---
 

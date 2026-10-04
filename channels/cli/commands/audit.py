@@ -35,10 +35,19 @@ def execute_audit_stream(args: argparse.Namespace, ctx: CLIContext) -> int:
         store = ctx.bus.store
 
     if store is not None:
-        if args.space_id and hasattr(store, "read_by_space"):
-            pulses = store.read_by_space(args.space_id)
-        elif hasattr(store, "read"):
-            pulses = store.read(0)
+        limit_val = args.limit or 50
+        if args.space_id:
+            if hasattr(store, "read_space_tail"):
+                page = store.read_space_tail(args.space_id, limit=limit_val, type_prefix=args.type)
+                pulses = [sp.pulse for sp in page.entries]
+            elif hasattr(store, "read_by_space"):
+                pulses = store.read_by_space(args.space_id)
+        else:
+            if hasattr(store, "read_page"):
+                page = store.read_page(limit=limit_val)
+                pulses = [sp.pulse for sp in page.entries]
+            elif hasattr(store, "read"):
+                pulses = store.read(0)
 
     if args.type:
         pulses = [p for p in pulses if p.type.startswith(args.type)]
@@ -73,7 +82,6 @@ def execute_audit_stream(args: argparse.Namespace, ctx: CLIContext) -> int:
     if args.follow:
         ctx.write_out("\n--- Streaming live pulses (Ctrl+C to stop) ---")
         import queue
-        import time
 
         event_q: queue.Queue[Any] = queue.Queue()
 

@@ -51,3 +51,23 @@ class DurableBusConfig:
         )
 
 
+DEFAULT_PULSE_PAGE_SIZE: int = 100
+MAX_PULSE_PAGE_SIZE: int = 1000
+MIN_PULSE_PAGE_SIZE: int = 1
+
+
+def get_max_pulse_page_size() -> int:
+    """Return maximum allowable pulse page size.
+
+    Can be overridden via RYU_PULSE_PAGE_MAX env var, clamped to [1, 10_000].
+    """
+    raw = os.environ.get("RYU_PULSE_PAGE_MAX")
+    if raw is not None:
+        try:
+            val = int(raw)
+            return max(1, min(val, 10_000))
+        except (ValueError, TypeError):
+            pass
+    return MAX_PULSE_PAGE_SIZE
+
+

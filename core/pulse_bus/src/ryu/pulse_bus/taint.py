@@ -7,15 +7,17 @@ class TaintResolver:
     def __init__(self, store: PulseStore):
         self.store = store
 
-    def is_taint_cleared(self, correlation_id: str, parent_pulse: Pulse | None) -> bool:
-        """
-        Check if a clearance event exists for this correlation_id AND the parent
-        pulse's position is before the clearance pulse's position.
-        Since we don't have position directly on the in-memory Pulse object, we
-        rely on the store's sequence. In practice, we just find all clearance events
-        for this correlation_id. If any exists, and its position is after the parent's
-        or we don't know, we assume cleared IF it was published before this pulse.
-        """
+    def is_taint_cleared(
+        self,
+        correlation_id: str,
+        parent_pulse: Pulse | None,
+        space_id: str | None = None,
+    ) -> bool:
+        """Check if a clearance event exists for this correlation_id."""
+        target_space = space_id or (parent_pulse.space_id if parent_pulse else None)
+        if target_space and hasattr(self.store, "has_pulse_of_type"):
+            return self.store.has_pulse_of_type(target_space, correlation_id, _TAINT_CLEARED_TYPE)
+
         clearances = [
             p for p in self.store.read_by_correlation(correlation_id)
             if p.type == _TAINT_CLEARED_TYPE
@@ -23,9 +25,6 @@ class TaintResolver:
         if not clearances:
             return False
 
-        # Simplification for Phase 1: if there's a clearance for this correlation,
-        # we consider it cleared for NEW pulses. The clearance is already in the store
-        # before this pulse is appended, so forward-only semantics hold.
         return True
 
     def resolve_taint(self, pulse: Pulse) -> bool:
@@ -42,7 +41,7 @@ class TaintResolver:
         if not parent.taint:
             return False
 
-        if self.is_taint_cleared(pulse.correlation_id, parent):
+        if self.is_taint_cleared(pulse.correlation_id, parent, space_id=pulse.space_id):
             return False
 
         return True

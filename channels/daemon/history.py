@@ -102,9 +102,19 @@ class SpaceHistoryStore:
                     logger.error(f"Error reading history file for space '{space_id}': {e}")
 
             # Fallback or supplemental rehydration from pulse_store if available
-            if not turns and self.pulse_store is not None and hasattr(self.pulse_store, "read_by_space"):
+            if not turns and self.pulse_store is not None:
                 try:
-                    pulses = self.pulse_store.read_by_space(space_id)
+                    if hasattr(self.pulse_store, "read_space_tail"):
+                        page = self.pulse_store.read_space_tail(
+                            space_id,
+                            limit=limit or 100,
+                            pulse_types=frozenset(["goal.defined"]),
+                        )
+                        pulses = [sp.pulse for sp in page.entries]
+                    elif hasattr(self.pulse_store, "read_by_space"):
+                        pulses = self.pulse_store.read_by_space(space_id)
+                    else:
+                        pulses = []
                     for p in pulses:
                         p_type = getattr(p, "type", "")
                         if p_type == "goal.defined":
