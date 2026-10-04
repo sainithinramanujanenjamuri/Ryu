@@ -17,6 +17,9 @@ Prior to Phase 15.1, the runtime maintained plan graphs and CAS versions in ephe
 
 All 10 dedicated integration tests in `core/plans/tests/test_postgres_plan_store.py` pass against live PostgreSQL. All 7 serialization unit tests in `core/plans/tests/test_serialization.py` pass. All existing crash recovery tests (32/32) and plan engine tests (7/7) pass without regressions. All executed Phase 15.1 governance, dependency, lint, and type-check gates passed with no reported violations.
 
+> [!NOTE]
+> **Documentation Hardening Note:** Documentation hardening applied to align deferred finding references with the authoritative Phase 15 Architecture Audit and to ensure verification claims remain bounded by the executable evidence recorded in this report.
+
 **Phase Gate Status:** **GATE-15.1: PASS**
 
 ---
@@ -229,7 +232,7 @@ Runtime operational
 - `core/plans/tests/test_plan_engine.py`: **7 passed**
 - `core/orchestrator/tests/test_phase12_8_crash_recovery.py`: **32 passed**
 - `core/orchestrator/tests/test_phase12_*.py`: **57 passed**
-- Full `core/` test suite: **100% passed**
+- Executed Plan and Orchestrator regression suites: **187 passed without failures**
 
 ---
 
@@ -280,12 +283,19 @@ Verified via `scripts/dep_guard.py`:
 
 ## 19. Boundaries & Deferred Items
 
-In strict adherence to the Phase 15.1 specification, all other audit findings from `docs/PHASE_15_ARCHITECTURE_AUDIT.md` remain deferred:
-- **Finding F-02 (Multi-Space Artifact Isolation):** Deferred to Phase 15.2.
-- **Finding F-03 (Space-Scoped Pulse Pagination):** Deferred to Phase 15.2.
-- **Finding F-04 (PostgreSQL Convergence State Store):** Deferred to Phase 15.3.
-- **Finding F-05 (Channel Daemon Token Hardening):** Deferred to Phase 15.4.
-- **Findings F-06 through F-13:** Deferred to Phase 15.4–15.5.
+In strict adherence to the Phase 15.1 specification, Phase 15.1 addresses ONLY **Finding F-01 (Non-Durable PlanStore / Recovery Cliff)**. All other audit findings from `docs/PHASE_15_ARCHITECTURE_AUDIT.md` remain deferred:
+- **Finding F-02 (P0) — Unpartitioned Artifact Namespace:** Artifact paths omit `space_id` namespace (`workers/repository/`, `workers/test_runner/`, `workers/research/`); deferred to Phase 15.2.
+- **Finding F-03 (P1) — Unbounded Pulse Retrieval:** `read_by_space()` issues unpaginated queries without `LIMIT`; deferred to Phase 15.3.
+- **Finding F-04 (P1) — Sequential-Only Task Dispatch:** `execute_task_full_pipeline()` blocking single-task dispatch without concurrent DAG scheduling; deferred to Phase 16.
+- **Finding F-05 (P1) — Recency-Bounded Experience Retrieval:** `query_similar_experiences()` recency-only scan lacks full-history semantic retrieval; deferred to Phase 16+.
+- **Finding F-06 (P1) — In-Memory Convergence State:** `InMemoryConvergenceStateStore` retry counts and fingerprint history reset on crash; deferred to Phase 15.4.
+- **Finding F-07 (P2) — Disconnected Agent Hierarchy:** `Agent`, `ContextManager`, `TeamBuilder` implemented but not wired to execution pipeline; deferred to Phase 16+.
+- **Finding F-08 (P2) — Undocumented Pulse Types in Architecture Sec 16:** 12 registry pulse types emitted in Phases 12–14 not backfilled into architecture document; deferred to Phase 15.5.
+- **Finding F-09 (P2) — Inter-Test State Leakage:** `test_slice_c_failure_then_repair` order-dependent flake in full suite; deferred test isolation hygiene.
+- **Finding F-10 (P2) — Global MCP Server Registration:** MCP server registry is global rather than space-scoped; deferred capability scoping.
+- **Finding F-11 (P3) — Unimplemented Semantic Memory Stubs:** `neo4j_stub.py` and `qdrant_stub.py` raise `NotImplementedError`; deferred.
+- **Finding F-12 (P3) — Unused Imports in Memory Tests:** 22 lint warnings in `memory/tests/`; deferred code quality hygiene.
+- **Finding F-13 (P3) — Python Version Declaration Mismatch:** `requires-python = ">=3.12"` in `pyproject.toml` vs runtime Python 3.11.9; deferred environment alignment.
 
 No out-of-scope capabilities or premature abstractions were introduced.
 
