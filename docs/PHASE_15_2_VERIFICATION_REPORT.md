@@ -158,12 +158,17 @@ Result: **0 violations detected. Core Boundary Rule strictly maintained.**
 
 ## 7. Phase Boundary & Deferred Work
 
-Phase 15.2 addresses **ONLY Finding F-02 (Unpartitioned Artifact Namespace — P0)**.
+Phase 15.2 addresses **ONLY Finding F-02 (Unpartitioned / Space-Unscoped Artifact Namespace — P0)**.
 
-In strict adherence to SCCA and the Phase 15 Architecture Audit, all subsequent findings are deferred to their designated subphases:
-- **Finding F-03 (Missing Global Lock for Shared Repositories — P0):** Deferred to Phase 15.3.
-- **Finding F-04 (In-Memory Resource Store Durability Cliff — P1):** Deferred to Phase 15.4.
-- **Findings F-05 through F-13:** Deferred to Phase 15.5 and beyond.
+The remaining authoritative Phase 15 findings remain deferred according to the authoritative Phase 15 Architecture Audit (`docs/PHASE_15_ARCHITECTURE_AUDIT.md`):
+- **Finding F-03 (P1) — Bounded Pulse Retrieval:** `read_by_space()` issues unpaginated queries without `LIMIT`; deferred to Phase 15.3.
+- **Finding F-04 (P1) — Concurrent DAG Scheduler:** `execute_task_full_pipeline()` blocking single-task dispatch without concurrent DAG scheduling; deferred to Phase 16.
+- **Finding F-05 (P1) — Full-history / Semantic Experience Retrieval:** `query_similar_experiences()` recency-only scan lacks full-history semantic retrieval; deferred to Phase 16+.
+- **Finding F-06 (P1) — Durable Convergence State:** `InMemoryConvergenceStateStore` retry counts and fingerprint history reset on crash; deferred to Phase 15.4.
+- **Finding F-07 (P2) — Agent Hierarchy Integration:** `Agent`, `ContextManager`, `TeamBuilder` implemented but not wired to execution pipeline; deferred to Phase 16+.
+- **Findings F-08 through F-13:** Deferred as defined in the Phase 15 Architecture Audit.
+
+*Note on Repository Concurrency:* In `docs/PHASE_15_2_ARCHITECTURE_AUDIT.md` Section 21, repository working tree isolation (e.g., git worktrees or cross-space lock coordination on shared physical git repositories) is recognized as an independent operational concern distinct from artifact namespace isolation. It is a follow-up concurrency consideration and is strictly distinguished from the authoritative Phase 15 findings taxonomy.
 
 ---
 
@@ -177,5 +182,6 @@ All required criteria for Phase 15.2 have been satisfied:
 - 24/24 dedicated Phase 15.2 tests passed across 5 consecutive runs.
 - 343/343 total regression and integrated tests passed with zero regressions.
 - Governance, spec coverage, dependency guard, lint, and type check audits cleanly passed.
+- All executed Phase 15.2 governance, dependency, lint, type-check, security, and regression gates passed with no reported violations.
 
 **PHASE 15.2 GATE STATUS: PASS**

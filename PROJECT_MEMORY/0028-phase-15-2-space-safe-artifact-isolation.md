@@ -110,6 +110,12 @@ Phase 15.2 strictly resolves Finding F-02 by enforcing Space-isolated artifact d
 
 ## 4. What Remains / Next Steps
 
-- **Finding F-03 (Missing Global Lock for Shared Repositories):** Inter-space concurrent write locking for shared physical repositories (P0).
-- **Finding F-04 (In-Memory Resource Store Durability Cliff):** PostgreSQL-backed resource lease store (P1).
-- **Finding F-05 through F-13:** Subsequent Phase 15 remediation findings.
+Phase 15.2 addressed ONLY Finding F-02. Remaining findings from the authoritative Phase 15 Architecture Audit (`docs/PHASE_15_ARCHITECTURE_AUDIT.md`) remain deferred:
+- **Finding F-03 (P1):** Bounded Pulse Retrieval (Phase 15.3).
+- **Finding F-04 (P1):** Concurrent DAG Scheduler (Phase 16).
+- **Finding F-05 (P1):** Full-history / Semantic Experience Retrieval (Phase 16+).
+- **Finding F-06 (P1):** Durable Convergence State (Phase 15.4).
+- **Finding F-07 (P2):** Agent Hierarchy Integration (Phase 16+).
+- **Findings F-08 through F-13:** Deferred as defined in the Phase 15 Architecture Audit.
+
+*Follow-up Operational Concern:* Coordinating inter-space concurrent write locking for shared physical git repositories is recognized as an independent operational concern distinct from artifact namespace isolation.
