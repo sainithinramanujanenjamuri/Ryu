@@ -1,14 +1,14 @@
 # Phase 15.3 Verification Report: Bounded Pulse Retrieval
 
-**Document Version:** 1.0.0  
+**Document Version:** 1.0.1  
 **Date:** 2026-10-04  
 **Target Finding:** F-03 — Bounded Pulse Retrieval (Severity: P1)  
-**Implementation Baseline:** `9e9fc6b`  
+**Implementation Baseline:** `d559b79`  
 **Governing Architecture:** Space-Centric Cognitive Architecture (SCCA)  
 **Governing ADR:** ADR-0047 (Bounded Pulse Retrieval and Keyset Pagination)  
 **Governing Contracts:** PULSE-013, PULSE-014, PULSE-015, PULSE-016, PULSE-017  
 **Audit Reference:** `docs/PHASE_15_ARCHITECTURE_AUDIT.md`, `docs/PHASE_15_3_ARCHITECTURE_AUDIT.md`  
-**Gate Status:** GATE-15.3: PASS  
+**Gate Status:** GATE-15.3: VERIFIED WITH EXPLICIT LIMITATIONS  
 
 ---
 
@@ -20,7 +20,7 @@ Prior to Phase 15.3, pulse retrieval methods in PostgreSQL (`read_by_space`, `re
 
 Phase 15.3 introduces monotonic keyset pagination, reverse-scanned tail retrieval with ascending chronological presentation, bounded generator streaming, fast existence probes, and fail-closed safety envelopes on legacy methods.
 
-All executed Phase 15.3 governance, dependency, lint, type-check, and regression gates passed with no reported violations.
+All executed Phase 15.3 governance, dependency, lint, type-check, and regression gates passed with no reported violations. Live Docker PostgreSQL integration is explicitly documented as limited due to local Docker service availability.
 
 ---
 
