@@ -2124,3 +2124,73 @@ spec_map:
     harness_case: "core/orchestrator/tests/test_concurrent_dag_scheduler.py"
     roadmap_phase: 15
     evidence_state: "INTEGRATION_VERIFIED"
+
+  # -----------------------------------------------------------------------
+  # Phase 15.5 — Semantic Memory & Experience Retrieval Governance (F-05)
+  # -----------------------------------------------------------------------
+
+  - id: MEM-SEM-001
+    title: "Bounded Space-Scoped Candidate Retrieval"
+    architecture_section: "docs/Architecture §4, CONTRACT_MATRIX §30I, ADR-0049"
+    acceptance_criterion: >
+      Semantic retrieval MUST generate candidates within a bounded, Space-scoped retrieval
+      envelope (candidate_count <= 50) before semantic scoring without materializing unbounded Space history.
+    contract:
+      file: "core/space/memory_protocol.py"
+      rule: "SpaceMemoryProtocol candidate retrieval strictly scoped to space_id and bounded by C_max <= 50"
+    harness_case: "harness/cases/memory/test_phase15_5_contracts_governance.py::TestPhase15_5Governance::test_all_phase15_5_contract_ids_defined"
+    roadmap_phase: 15.5
+    evidence_state: "ARCHITECTURAL_TARGET"
+
+  - id: MEM-SEM-002
+    title: "Deterministic Semantic Similarity Ranking"
+    architecture_section: "docs/Architecture §4, CONTRACT_MATRIX §30I, ADR-0049"
+    acceptance_criterion: >
+      Given the same candidate set, embedding inputs, model/version, configuration, and ranking policy,
+      semantic ranking MUST produce a deterministically ordered result bounded by K_max <= 5.
+    contract:
+      file: "core/space/memory_protocol.py"
+      rule: "Deterministic dot-product similarity ranking and quantized tie-breaking with K_max <= 5"
+    harness_case: "harness/cases/memory/test_phase15_5_contracts_governance.py::TestPhase15_5Governance::test_all_phase15_5_contract_ids_defined"
+    roadmap_phase: 15.5
+    evidence_state: "ARCHITECTURAL_TARGET"
+
+  - id: MEM-SEM-003
+    title: "Decoupled Embedding Boundary"
+    architecture_section: "docs/Architecture §4, CONTRACT_MATRIX §30I, ADR-0049"
+    acceptance_criterion: >
+      Core MUST depend only on an embedding protocol abstraction. Embedding providers MUST be
+      injected implementations residing strictly outside core. Core contains zero ML/LLM dependencies.
+    contract:
+      file: "core/space/memory_protocol.py"
+      rule: "EmbeddingProviderProtocol defined in core with zero external ML/LLM library imports"
+    harness_case: "harness/cases/memory/test_phase15_5_contracts_governance.py::TestPhase15_5Governance::test_core_boundary_independence"
+    roadmap_phase: 15.5
+    evidence_state: "ARCHITECTURAL_TARGET"
+
+  - id: MEM-SEM-004
+    title: "Graceful Semantic Retrieval Degradation"
+    architecture_section: "docs/Architecture §4, CONTRACT_MATRIX §30I, ADR-0049"
+    acceptance_criterion: >
+      Failure of an embedding provider or semantic storage layer MUST NOT grant memory authority
+      or halt unrelated execution. Retrieval must degrade safely to metadata fallback or empty hints.
+    contract:
+      file: "core/memory/adaptation.py"
+      rule: "AdaptationLayer error containment falls back to metadata or zero hints without execution halt"
+    harness_case: "harness/cases/memory/test_phase15_5_contracts_governance.py::TestPhase15_5Governance::test_all_phase15_5_contract_ids_defined"
+    roadmap_phase: 15.5
+    evidence_state: "ARCHITECTURAL_TARGET"
+
+  - id: MEM-SEM-005
+    title: "Bounded Advisory Experience Hints"
+    architecture_section: "docs/Architecture §4, CONTRACT_MATRIX §30I, ADR-0049"
+    acceptance_criterion: >
+      Semantic retrieval results MUST remain advisory. Experience hints must be Space-scoped, bounded,
+      and non-authoritative, and must not directly mutate plans, task graphs, budgets, or kernel state.
+    contract:
+      file: "core/memory/adaptation.py"
+      rule: "ExperienceHint immutable dataclass injected only into advisory ConvergenceProposal"
+    harness_case: "harness/cases/memory/test_phase15_5_contracts_governance.py::TestPhase15_5Governance::test_all_phase15_5_contract_ids_defined"
+    roadmap_phase: 15.5
+    evidence_state: "ARCHITECTURAL_TARGET"
+

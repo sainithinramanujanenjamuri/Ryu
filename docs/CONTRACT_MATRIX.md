@@ -689,6 +689,18 @@ If the architecture does not answer it, an ADR is required before implementation
 
 ---
 
+# 30I. Phase 15.5 Semantic Memory & Experience Retrieval Governance Contracts
+
+| ID          | Contract                                      | Required Invariant                                                                                                     | Implementation Boundary                                      | Harness / Evidence                                                                 | Roadmap    | Status                 |
+| ----------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------- | ---------- | ---------------------- |
+| MEM-SEM-001 | Bounded Space-Scoped Candidate Retrieval      | Candidate generation strictly Space-scoped and bounded ($C_{max} \le 50$) before scoring; `list_experiences()` bounded.| `core/space/memory_protocol.py`, `memory/adapters/`          | `harness/cases/memory/test_phase15_5_contracts_governance.py`                      | Phase 15.5 | `ARCHITECTURAL_TARGET` |
+| MEM-SEM-002 | Deterministic Semantic Similarity Ranking     | Given identical inputs, scoring produces deterministic order ($K_{max} \le 5$); exact failure fingerprint prioritized. | `core/space/memory_protocol.py`, `memory/retrieval/`          | `harness/cases/memory/test_phase15_5_contracts_governance.py`                      | Phase 15.5 | `ARCHITECTURAL_TARGET` |
+| MEM-SEM-003 | Decoupled Embedding Boundary                  | Core defines `EmbeddingProviderProtocol`; implementations injected outside core; zero ML/Ollama imports in `core/`.    | `core/space/memory_protocol.py`, `memory/embeddings/`         | `harness/cases/memory/test_phase15_5_contracts_governance.py`                      | Phase 15.5 | `ARCHITECTURAL_TARGET` |
+| MEM-SEM-004 | Graceful Semantic Retrieval Degradation       | Embedding/storage failure degrades to metadata fallback or no-hint; zero execution halts; zero authority escalation.   | `core/memory/adaptation.py`, `core/orchestrator/dispatch_model.py` | `harness/cases/memory/test_phase15_5_contracts_governance.py`                      | Phase 15.5 | `ARCHITECTURAL_TARGET` |
+| MEM-SEM-005 | Bounded Advisory Experience Hints             | Semantic retrieval results strictly advisory; cannot directly mutate plans, task graphs, budgets, leases, or kernel.   | `core/memory/adaptation.py`, `core/orchestrator/dispatch_model.py` | `harness/cases/memory/test_phase15_5_contracts_governance.py`                      | Phase 15.5 | `ARCHITECTURAL_TARGET` |
+
+---
+
 # 31. Governing Principle
 
 > **If we cannot point from an architectural requirement to a contract, from that contract to an implementation boundary, and from that implementation to executable evidence, RYU AI is not yet proven.**
