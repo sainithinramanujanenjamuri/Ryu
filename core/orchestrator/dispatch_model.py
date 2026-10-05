@@ -293,6 +293,7 @@ class SpaceKernelAuthorityProtocol(Protocol):
         error: str | None = None,
         result_ref: str | None = None,
         proposal_id: str | None = None,
+        max_rebases: int = 0,
     ) -> tuple[bool, int, str | None]: ...
 
     def request_capability(
@@ -728,7 +729,11 @@ class DeterministicDispatcher:
             )
 
         norm_state = node.state.lower()
-        if norm_state == TaskState.ADMITTED.value:
+        if norm_state in (
+            TaskState.ADMITTED.value,
+            TaskState.LEASE_PENDING.value,
+            TaskState.LEASED.value,
+        ):
             return (
                 True,
                 CapabilityResponse(status="ok", result={"already_admitted": True}),
@@ -755,6 +760,7 @@ class DeterministicDispatcher:
                 expected_plan_version=cur_version,
                 from_state=TaskState.PENDING.value,
                 reason="Dependencies satisfied; marking task ready",
+                max_rebases=3,
             )
             if not ok:
                 return (
@@ -773,6 +779,7 @@ class DeterministicDispatcher:
                 expected_plan_version=cur_version,
                 from_state=TaskState.READY.value,
                 reason="Requesting capability admission",
+                max_rebases=3,
             )
             if not ok:
                 return (
@@ -795,6 +802,7 @@ class DeterministicDispatcher:
                 expected_plan_version=cur_version,
                 from_state=TaskState.BLOCKED.value,
                 reason="Re-evaluating blocked task for admission",
+                max_rebases=3,
             )
             if not ok:
                 return (
@@ -851,8 +859,14 @@ class DeterministicDispatcher:
                 expected_plan_version=cur_version,
                 from_state=TaskState.ADMISSION_PENDING.value,
                 reason="Capability admitted by kernel AdmissionController",
+                max_rebases=3,
             )
             if not ok:
+                adm = getattr(kernel, "admission", None)
+                if adm is not None and getattr(response, "result", None) and isinstance(response.result, dict):
+                    resv_id = response.result.get("reservation_id")
+                    if resv_id:
+                        adm.release_reservation(kernel.space_id, resv_id)
                 return (
                     False,
                     CapabilityResponse(
@@ -873,6 +887,7 @@ class DeterministicDispatcher:
             from_state=TaskState.ADMISSION_PENDING.value,
             reason=f"Admission denied: {err_msg}",
             error=err_msg,
+            max_rebases=3,
         )
         return False, response, new_ver
 
@@ -887,6 +902,7 @@ class DeterministicDispatcher:
         duration_seconds: float = 60.0,
         priority: int = 0,
         scope: str = "execution",
+        max_rebases: int = 0,
     ) -> tuple[bool, ResourceAcquisitionResult, int]:
         """Request resource lease allocation for an admitted task through ResourceManager (Phase 12.3).
 
@@ -930,6 +946,7 @@ class DeterministicDispatcher:
                 expected_plan_version=cur_version,
                 from_state=TaskState.ADMITTED.value,
                 reason="Requesting resource lease allocation",
+                max_rebases=max_rebases,
             )
             if not ok:
                 return (
@@ -956,16 +973,30 @@ class DeterministicDispatcher:
             attempt=node.attempt,
         )
 
-        acq = resource_mgr.acquire(
-            space_id=kernel.space_id,
-            requester_id=task_id,
-            identity=identity,
-            units=units,
-            duration_seconds=duration_seconds,
-            priority=priority,
-            idempotency_key=idempotency_key,
-            scope=scope,
-        )
+        acq = None
+        lm = getattr(resource_mgr, "_lease_manager", None)
+        if lm is not None and hasattr(lm, "list_all_leases"):
+            now = resource_mgr.clock.now()
+            for existing in lm.list_all_leases(space_id=kernel.space_id):
+                if (
+                    existing.requester_id == task_id
+                    and existing.resource_id == identity
+                    and existing.is_valid(now)
+                ):
+                    acq = ResourceAcquisitionResult(granted=True, lease=existing, cached=True)
+                    break
+
+        if acq is None:
+            acq = resource_mgr.acquire(
+                space_id=kernel.space_id,
+                requester_id=task_id,
+                identity=identity,
+                units=units,
+                duration_seconds=duration_seconds,
+                priority=priority,
+                idempotency_key=idempotency_key,
+                scope=scope,
+            )
 
         if acq.granted and acq.lease is not None:
             # Transition to LEASED via CAS
@@ -976,6 +1007,7 @@ class DeterministicDispatcher:
                 from_state=TaskState.LEASE_PENDING.value,
                 reason=f"Resource lease granted: {acq.lease.lease_token}",
                 result_ref=acq.lease.lease_token,
+                max_rebases=max_rebases,
             )
             if not ok:
                 # ROLLBACK PROTECTION:
@@ -1013,6 +1045,7 @@ class DeterministicDispatcher:
                 from_state=TaskState.LEASE_PENDING.value,
                 reason=f"Resource acquisition failed: {reason_str}",
                 error=reason_str,
+                max_rebases=max_rebases,
             )
             return False, acq, new_ver
 
@@ -1329,6 +1362,7 @@ class DeterministicDispatcher:
             expected_plan_version=cur_version,
             from_state=TaskState.LEASED.value,
             reason="Dispatching task to worker invoker",
+            max_rebases=3,
         )
         if not ok:
             return DispatchExecutionResult(
@@ -1348,6 +1382,7 @@ class DeterministicDispatcher:
             expected_plan_version=cur_version,
             from_state=TaskState.DISPATCHED.value,
             reason="Worker execution started",
+            max_rebases=3,
         )
         if not ok:
             return DispatchExecutionResult(
@@ -1418,6 +1453,7 @@ class DeterministicDispatcher:
                 from_state=TaskState.RUNNING.value,
                 reason="Worker execution succeeded; observing artifacts",
                 result_ref=exec_res.request_id,
+                max_rebases=3,
             )
             terminal_state = TaskState.OBSERVING.value
             cur_version = new_ver
@@ -1431,6 +1467,7 @@ class DeterministicDispatcher:
                 from_state=TaskState.RUNNING.value,
                 reason=err_msg,
                 error=err_msg,
+                max_rebases=3,
             )
             terminal_state = TaskState.TIMED_OUT.value
             cur_version = new_ver
@@ -1463,6 +1500,7 @@ class DeterministicDispatcher:
                 from_state=TaskState.RUNNING.value,
                 reason=err_msg,
                 error=err_msg,
+                max_rebases=3,
             )
             terminal_state = TaskState.CANCELLED.value
             cur_version = new_ver
@@ -1476,6 +1514,7 @@ class DeterministicDispatcher:
                 from_state=TaskState.RUNNING.value,
                 reason=err_msg,
                 error=err_msg,
+                max_rebases=3,
             )
             terminal_state = TaskState.FAILED.value
             cur_version = new_ver
@@ -2174,6 +2213,7 @@ class DeterministicDispatcher:
                     from_state=TaskState.RUNNING.value,
                     reason="Transitioning to observing for evidence collection",
                     result_ref=execution_result.request_id,
+                    max_rebases=3,
                 )
                 if not ok:
                     continue  # Retry CAS loop
@@ -2187,6 +2227,7 @@ class DeterministicDispatcher:
                     expected_plan_version=cur_version,
                     from_state=TaskState.OBSERVING.value,
                     reason="Evaluating task execution evidence",
+                    max_rebases=3,
                 )
                 if not ok:
                     continue  # Retry CAS loop
@@ -2223,6 +2264,7 @@ class DeterministicDispatcher:
                     from_state=TaskState.EVALUATING.value,
                     reason="Execution evidence verified",
                     result_ref=execution_result.request_id,
+                    max_rebases=3,
                 )
                 if not ok:
                     continue  # Retry CAS loop
@@ -2300,6 +2342,7 @@ class DeterministicDispatcher:
                     from_state=TaskState.EVALUATING.value,
                     reason=fail_msg,
                     error=fail_msg,
+                    max_rebases=3,
                 )
                 if not ok:
                     continue  # Retry CAS loop
@@ -2422,29 +2465,62 @@ class DeterministicDispatcher:
             scope=scope,
         )
 
-        if (
-            dispatch_res.terminal_state != TaskState.OBSERVING.value
-            or dispatch_res.execution_result is None
-        ):
-            return TaskCompletionResult(
-                task_id=task_id,
-                space_id=kernel.space_id,
-                plan_version=dispatch_res.plan_version,
-                status=dispatch_res.status,
-                terminal_state=dispatch_res.terminal_state,
-                completed=False,
-                error=dispatch_res.error,
-                reason=dispatch_res.reason,
-            )
+        try:
+            if (
+                dispatch_res.terminal_state != TaskState.OBSERVING.value
+                or dispatch_res.execution_result is None
+            ):
+                return TaskCompletionResult(
+                    task_id=task_id,
+                    space_id=kernel.space_id,
+                    plan_version=dispatch_res.plan_version,
+                    status=dispatch_res.status,
+                    terminal_state=dispatch_res.terminal_state,
+                    completed=False,
+                    error=dispatch_res.error,
+                    reason=dispatch_res.reason,
+                )
 
-        return self.observe_and_evaluate_task(
-            kernel=kernel,
-            task_id=task_id,
-            execution_result=dispatch_res.execution_result,
-            expected_plan_version=dispatch_res.plan_version,
-            base_dir=base_dir,
-            replay_mode=replay_mode,
-        )
+            comp_res = self.observe_and_evaluate_task(
+                kernel=kernel,
+                task_id=task_id,
+                execution_result=dispatch_res.execution_result,
+                expected_plan_version=dispatch_res.plan_version,
+                base_dir=base_dir,
+                replay_mode=replay_mode,
+            )
+            return comp_res
+        finally:
+            adm = getattr(kernel, "admission", None)
+            if adm is not None and hasattr(adm, "reconcile_reservation"):
+                resv_id = f"resv-{kernel.space_id}-{task_id}"
+                if "comp_res" in locals() and getattr(comp_res, "completed", False):
+                    adm.reconcile_reservation(kernel.space_id, resv_id, 0.0)
+                else:
+                    adm.release_reservation(kernel.space_id, resv_id)
+
+    def is_plan_converged(self, task_graph: TaskGraph) -> bool:
+        """Return True if every non-optional task in the graph is in a terminal state (Phase 12.6)."""
+        terminal = {
+            TaskState.COMPLETED.value,
+            TaskState.FAILED.value,
+            TaskState.CANCELLED.value,
+            TaskState.ESCALATED.value,
+            TaskState.TIMED_OUT.value,
+        }
+        for node in task_graph.nodes:
+            if node.state not in terminal and not node.optional:
+                return False
+        return True
+
+    def is_plan_succeeded(self, task_graph: TaskGraph) -> bool:
+        """Return True if every non-optional task reached COMPLETED (goal achieved, Phase 12.6)."""
+        for node in task_graph.nodes:
+            if node.optional:
+                continue
+            if node.state != TaskState.COMPLETED.value:
+                return False
+        return True
 
 
 # ---------------------------------------------------------------------------

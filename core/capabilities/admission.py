@@ -64,6 +64,7 @@ class AdmissionController:
         self._initial_budgets: dict[str, float] = {}
         self._policies: dict[str, str] = {}  # "hard_stop" | "approval_required" | "degraded"
         self._soft_thresholds: dict[str, float] = {}  # ratio 0.0 to 1.0 (default 0.80)
+        self._reservations: dict[tuple[str, str], float] = {}  # (space_id, reservation_id) -> amount (SCHED-004)
 
     def set_budget(
         self,
@@ -83,6 +84,40 @@ class AdmissionController:
         """Return the current remaining budget for a Space."""
         with self._lock:
             return self._budgets.get(space_id, 0.0)
+
+    def get_reserved_budget(self, space_id: str) -> float:
+        """Return the sum of active budget reservations for a Space (SCHED-004)."""
+        with self._lock:
+            return sum(amt for (sp, _), amt in self._reservations.items() if sp == space_id)
+
+    def reserve_budget(self, space_id: str, amount: float, reservation_id: str) -> bool:
+        """Atomically pre-reserve budget for a task (SCHED-004)."""
+        with self._lock:
+            current = self._budgets.get(space_id, 0.0)
+            if amount > 0 and current < amount:
+                return False
+            if amount > 0:
+                self._budgets[space_id] = current - amount
+                self._reservations[(space_id, reservation_id)] = amount
+            return True
+
+    def release_reservation(self, space_id: str, reservation_id: str) -> bool:
+        """Release a pre-reserved budget back to available balance (e.g. on lease/CAS failure) (SCHED-004)."""
+        with self._lock:
+            key = (space_id, reservation_id)
+            if key in self._reservations:
+                amount = self._reservations.pop(key)
+                self._budgets[space_id] = self._budgets.get(space_id, 0.0) + amount
+                return True
+            return False
+
+    def reconcile_reservation(self, space_id: str, reservation_id: str, actual_cost: float) -> None:
+        """Reconcile a pre-reserved budget against actual spend upon task completion (SCHED-004)."""
+        with self._lock:
+            key = (space_id, reservation_id)
+            reserved = self._reservations.pop(key, 0.0)
+            diff = reserved - actual_cost
+            self._budgets[space_id] = max(0.0, self._budgets.get(space_id, 0.0) + diff)
 
     def replenish_budget(self, space_id: str, amount: float) -> str:
         """Replenish budget and mint a new escalation window."""
@@ -149,59 +184,30 @@ class AdmissionController:
             setattr(approval, "consumed_at", time.time())
             setattr(approval, "status", "consumed")
 
+        req_cost = float(getattr(request, "budget", 0.0) or 0.0)
+        resv_key: str | None = None
+
         with self._lock:
             remaining = self._budgets.get(space_id, 0.0)
             initial = self._initial_budgets.get(space_id, 0.0)
             policy = self._policies.get(space_id, "hard_stop")
             soft_thresh = self._soft_thresholds.get(space_id, 0.80)
 
-        window_id = self.windows.get_or_create_window(space_id)
-
-        # MODE A: hard_stop (budget exhausted)
-        if remaining <= 0:
-            should_escalate = self.windows.should_escalate_budget(space_id, window_id)
-            if should_escalate and self.bus is not None:
-                self.bus.publish(
-                    Pulse(
-                        id=f"budget-exceeded-{space_id}-{window_id}",
-                        space_id=space_id,
-                        type="space.budget.exceeded",
-                        severity=Severity.CRITICAL,
-                        source="admission_controller",
-                        timestamp=datetime.now(timezone.utc),
-                        payload={
-                            "policy_mode": "hard_stop",
-                            "remaining_budget": remaining,
-                            "window_id": window_id,
-                        },
-                        taint=False,
-                        correlation_id=f"corr-budget-{space_id}",
-                        parent_pulse_id=None,
-                    )
-                )
-
-            return CapabilityResponse(
-                status="denied",
-                error="budget_exhausted",
-                cost=0.0,
-            )
-
-        # MODE B: approval_required (soft threshold reached)
-        if policy == "approval_required" and initial > 0:
-            spent = initial - remaining
-            if (spent / initial) >= soft_thresh:
+            # MODE A: hard_stop (budget exhausted or insufficient for requested budget)
+            if remaining <= 0 or (req_cost > 0 and remaining < req_cost):
+                window_id = self.windows.get_or_create_window(space_id)
                 should_escalate = self.windows.should_escalate_budget(space_id, window_id)
                 if should_escalate and self.bus is not None:
                     self.bus.publish(
                         Pulse(
-                            id=f"budget-warning-{space_id}-{window_id}",
+                            id=f"budget-exceeded-{space_id}-{window_id}",
                             space_id=space_id,
                             type="space.budget.exceeded",
-                            severity=Severity.WARNING,
+                            severity=Severity.CRITICAL,
                             source="admission_controller",
                             timestamp=datetime.now(timezone.utc),
                             payload={
-                                "policy_mode": "approval_required",
+                                "policy_mode": "hard_stop",
                                 "remaining_budget": remaining,
                                 "window_id": window_id,
                             },
@@ -210,16 +216,57 @@ class AdmissionController:
                             parent_pulse_id=None,
                         )
                     )
+
                 return CapabilityResponse(
                     status="denied",
-                    error="approval_required",
+                    error="budget_exhausted",
                     cost=0.0,
                 )
 
-        # MODE C: degraded mode (or normal admission within budget)
-        return CapabilityResponse(
-            status="ok",
-            result={"degraded": (policy == "degraded")},
-            cost=0.0,
-        )
+            # MODE B: approval_required (soft threshold reached)
+            if policy == "approval_required" and initial > 0:
+                spent = initial - remaining
+                if (spent / initial) >= soft_thresh:
+                    window_id = self.windows.get_or_create_window(space_id)
+                    should_escalate = self.windows.should_escalate_budget(space_id, window_id)
+                    if should_escalate and self.bus is not None:
+                        self.bus.publish(
+                            Pulse(
+                                id=f"budget-warning-{space_id}-{window_id}",
+                                space_id=space_id,
+                                type="space.budget.exceeded",
+                                severity=Severity.WARNING,
+                                source="admission_controller",
+                                timestamp=datetime.now(timezone.utc),
+                                payload={
+                                    "policy_mode": "approval_required",
+                                    "remaining_budget": remaining,
+                                    "window_id": window_id,
+                                },
+                                taint=False,
+                                correlation_id=f"corr-budget-{space_id}",
+                                parent_pulse_id=None,
+                            )
+                        )
+                    return CapabilityResponse(
+                        status="denied",
+                        error="approval_required",
+                        cost=0.0,
+                    )
+
+            # Atomically reserve budget if requested (SCHED-004)
+            if req_cost > 0:
+                resv_key = request.idempotency_key or f"resv-{request.requester_id}-{time.time()}"
+                self._budgets[space_id] = remaining - req_cost
+                self._reservations[(space_id, resv_key)] = req_cost
+
+            # MODE C: degraded mode (or normal admission within budget)
+            result_payload: dict[str, Any] = {"degraded": (policy == "degraded")}
+            if resv_key is not None:
+                result_payload["reservation_id"] = resv_key
+            return CapabilityResponse(
+                status="ok",
+                result=result_payload,
+                cost=req_cost,
+            )
 

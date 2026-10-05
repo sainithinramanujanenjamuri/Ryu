@@ -37,12 +37,18 @@ from core.orchestrator.monitor import Monitor, TimelineState
 from core.orchestrator.orchestrator import OrchestratorSession, SpaceOrchestrator
 from core.orchestrator.planner import Planner, ProposedPlan
 from core.orchestrator.reconciler import PlanReconciler, ReconcileResult
+from core.orchestrator.scheduler import (
+    ConcurrentDAGScheduler,
+    SchedulerConfig,
+    TaskCandidate,
+)
 from core.orchestrator.team_builder import AssignmentTable, TaskAssignment, TeamBuilder
 
 __all__ = [
     "Adapter",
     "AssignmentTable",
     "Command",
+    "ConcurrentDAGScheduler",
     "ConvergenceDecision",
     "ConvergenceEngine",
     "ConvergenceProposal",
@@ -67,9 +73,11 @@ __all__ = [
     "Planner",
     "ProposedPlan",
     "ReconcileResult",
+    "SchedulerConfig",
     "SpaceKernelAuthorityProtocol",
     "SpaceOrchestrator",
     "TaskAssignment",
+    "TaskCandidate",
     "TaskCompletionResult",
     "TaskDispatcherProtocol",
     "TaskExecutionRequest",

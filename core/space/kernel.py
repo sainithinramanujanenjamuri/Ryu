@@ -10,6 +10,7 @@ spec §4 (Space Kernel), §16 (Space lifecycle), SPACE-001/006, TAINT-005 — Ph
 from __future__ import annotations
 
 import threading
+import time
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
@@ -170,10 +171,12 @@ class SpaceKernel:
         error: str | None = None,
         result_ref: str | None = None,
         proposal_id: str | None = None,
+        max_rebases: int = 0,
     ) -> tuple[bool, int, str | None]:
         """Propose a task lifecycle transition via atomic CAS PlanDelta.
 
-        Enforces Space isolation, state machine validity, and single-writer CAS.
+        Enforces Space isolation, state machine validity, single-writer CAS,
+        and bounded optimistic rebasing when max_rebases > 0 (SCHED-002, ADR-0048).
         Supports both calling conventions:
           1. (task_id, to_state, expected_plan_version, from_state=...) / keyword args
           2. (task_id, from_state, to_state, error=..., reason=...)
@@ -210,7 +213,46 @@ class SpaceKernel:
                 }
             ],
         )
-        return self.commit_plan_delta(delta, proposal_id=proposal_id or task_id)
+        ok, new_ver, winning_id = self.commit_plan_delta(delta, proposal_id=proposal_id or task_id)
+        if ok or max_rebases <= 0:
+            return ok, new_ver, winning_id
+
+        # Optimistic CAS rebase loop (SCHED-002, ADR-0048)
+        for rebase_idx in range(1, max_rebases + 1):
+            time.sleep(0.001 * rebase_idx)
+            latest_ver = self.get_plan_version()
+            fresh_graph = self.get_task_graph(latest_ver)
+            node = fresh_graph.get_node(task_id)
+            if node is None:
+                return False, latest_ver, winning_id
+            if actual_from and node.state.lower() != actual_from.lower():
+                # Node state changed incompatibly during race
+                return False, latest_ver, winning_id
+
+            rebased_delta = PlanDelta(
+                space_id=self.space_id,
+                base_version=latest_ver,
+                resulting_version=latest_ver + 1,
+                ops=[
+                    {
+                        "op": "transition",
+                        "target_node_id": task_id,
+                        "to_state": actual_to,
+                        "from_state": actual_from,
+                        "reason": f"{reason} (rebased {rebase_idx})",
+                        "error": error,
+                        "result_ref": result_ref,
+                    }
+                ],
+                delta_id=f"delta-{task_id}-rebase-{rebase_idx}",
+            )
+            ok, new_ver, winning_id = self.commit_plan_delta(
+                rebased_delta, proposal_id=f"{proposal_id or task_id}-rebase-{rebase_idx}"
+            )
+            if ok:
+                return True, new_ver, winning_id
+
+        return False, self.get_plan_version(), winning_id
 
     def get_task_graph(self, version: int | None = None) -> TaskGraph:
         """Retrieve the authoritative TaskGraph for this Space (current or historical)."""

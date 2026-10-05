@@ -2055,3 +2055,72 @@ spec_map:
     harness_case: "core/pulse_bus/tests/test_phase15_3_bounded_pulse_retrieval.py"
     roadmap_phase: 15
     evidence_state: "INTEGRATION_VERIFIED"
+
+  # -----------------------------------------------------------------------
+  # Phase 15.4 — Concurrent DAG Scheduler & Bounded Execution (F-04)
+  # -----------------------------------------------------------------------
+
+  - id: SCHED-001
+    title: "Bounded Concurrent Execution Invariant"
+    architecture_section: "docs/Architecture §4, CONTRACT_MATRIX §30H, ADR-0048"
+    acceptance_criterion: >
+      Total concurrent workers across daemon must not exceed max_concurrent_workers.
+      Per-space concurrent tasks must not exceed per_space_concurrency.
+    contract:
+      file: "core/orchestrator/scheduler.py"
+      rule: "SchedulerConfig bounded worker thread pool and per-space concurrency limits"
+    harness_case: "core/orchestrator/tests/test_concurrent_dag_scheduler.py"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"
+
+  - id: SCHED-002
+    title: "Optimistic Plan CAS Rebase Invariant"
+    architecture_section: "docs/Architecture §4, CONTRACT_MATRIX §30H, ADR-0048"
+    acceptance_criterion: >
+      Task lifecycle state transitions must automatically rebase against concurrent
+      plan mutations up to max_cas_rebases = 3. Hardware leases are rolled back on exhaustion.
+    contract:
+      file: "core/orchestrator/scheduler.py"
+      rule: "Optimistic plan CAS rebase loop with lease rollback protection"
+    harness_case: "core/orchestrator/tests/test_concurrent_dag_scheduler.py"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"
+
+  - id: SCHED-003
+    title: "Multi-Space Fairness Invariant"
+    architecture_section: "docs/Architecture §4, CONTRACT_MATRIX §30H, ADR-0048"
+    acceptance_criterion: >
+      Scheduler must allocate worker execution slots across active Spaces using fair-share
+      round-robin scheduling, preventing starvation of smaller spaces.
+    contract:
+      file: "core/orchestrator/scheduler.py"
+      rule: "Multi-space round-robin candidate distribution"
+    harness_case: "core/orchestrator/tests/test_concurrent_dag_scheduler.py"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"
+
+  - id: SCHED-004
+    title: "Atomic Admission Budget Pre-Reservation"
+    architecture_section: "docs/Architecture §4, CONTRACT_MATRIX §30H, ADR-0048"
+    acceptance_criterion: >
+      AdmissionController must atomically pre-reserve estimated task budget at admission time
+      and reconcile upon completion or failure, preventing concurrent overruns under hard_stop.
+    contract:
+      file: "core/capabilities/admission.py"
+      rule: "Atomic budget pre-reservation and reconciliation under admission lock"
+    harness_case: "core/orchestrator/tests/test_concurrent_dag_scheduler.py"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"
+
+  - id: SCHED-005
+    title: "Terminal Transition Exclusivity"
+    architecture_section: "docs/Architecture §4, CONTRACT_MATRIX §30H, ADR-0048"
+    acceptance_criterion: >
+      A task may enter a terminal state exactly once. Late updates from defunct attempts
+      are rejected. Duplicate dispatch requests are deduplicated idempotently.
+    contract:
+      file: "core/orchestrator/scheduler.py"
+      rule: "Terminal state immutability and idempotency token deduplication"
+    harness_case: "core/orchestrator/tests/test_concurrent_dag_scheduler.py"
+    roadmap_phase: 15
+    evidence_state: "INTEGRATION_VERIFIED"

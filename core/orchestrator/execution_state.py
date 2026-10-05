@@ -85,6 +85,15 @@ class ExecutionAttemptStore(Protocol):
       - PostgresExecutionAttemptStore  — for production (not imported here; in memory/).
     """
 
+    def claim_attempt(self, record: ExecutionAttemptRecord) -> bool:
+        """Atomically claim a dispatch attempt for record.idempotency_key.
+
+        Returns:
+            True if successfully claimed (first caller wins).
+            False if already claimed by a prior attempt (duplicate / lost race).
+        """
+        ...
+
     def save_attempt(self, record: ExecutionAttemptRecord) -> None:
         """Persist a new attempt record. Idempotent: second call with same idempotency_key updates in place."""
         ...
@@ -187,6 +196,19 @@ class InMemoryExecutionAttemptStore:
         self._lock = threading.Lock()
         # keyed by idempotency_key
         self._records: dict[str, ExecutionAttemptRecord] = {}
+
+    def claim_attempt(self, record: ExecutionAttemptRecord) -> bool:
+        """Atomically claim a dispatch attempt for record.idempotency_key.
+
+        Returns:
+            True if successfully claimed (first caller wins).
+            False if already claimed by a prior attempt (duplicate / lost race).
+        """
+        with self._lock:
+            if record.idempotency_key in self._records:
+                return False
+            self._records[record.idempotency_key] = record
+            return True
 
     def save_attempt(self, record: ExecutionAttemptRecord) -> None:
         with self._lock:

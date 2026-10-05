@@ -95,7 +95,7 @@ def test_artifact_path_safety_clean() -> None:
         assert safe is True
         assert err is None
         assert res_path is not None
-        assert res_path.resolve() == (base / "sp-1" / "output" / "report.txt").resolve()
+        assert res_path.resolve() == (base / "artifacts" / "sp-1" / "output" / "report.txt").resolve()
 
 
 def test_artifact_path_traversal_rejection() -> None:

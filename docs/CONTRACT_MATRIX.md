@@ -677,6 +677,18 @@ If the architecture does not answer it, an ADR is required before implementation
 
 ---
 
+# 30H. Phase 15.4 Concurrent DAG Scheduler & Bounded Execution Engine Contracts
+
+| ID        | Contract                                      | Required Invariant                                                                                                     | Implementation Boundary                                      | Harness / Evidence                                                                 | Roadmap    | Status                 |
+| --------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------- | ---------- | ---------------------- |
+| SCHED-001 | Bounded Concurrent Execution Invariant        | Global and per-space concurrency strictly bounded; duplicate dispatch prevented via durable attempt registration.     | `core/orchestrator/scheduler.py`, `core/orchestrator/execution_state.py` | `core/orchestrator/tests/test_concurrent_dag_scheduler.py`                        | Phase 15.4 | `INTEGRATION_VERIFIED` |
+| SCHED-002 | Optimistic Plan CAS Rebase Invariant          | Task transitions rebase against fresh plan version on CAS conflict up to bound; leases rolled back on failure.        | `core/orchestrator/dispatch_model.py`, `core/space/kernel.py` | `core/orchestrator/tests/test_concurrent_dag_scheduler.py`                        | Phase 15.4 | `INTEGRATION_VERIFIED` |
+| SCHED-003 | Multi-Space Fairness Invariant                | Active Spaces allocated execution slots via fair-share round robin; no single Space monopolizes global worker pool.   | `core/orchestrator/scheduler.py`                             | `core/orchestrator/tests/test_concurrent_dag_scheduler.py`                        | Phase 15.4 | `INTEGRATION_VERIFIED` |
+| SCHED-004 | Atomic Admission Budget Pre-Reservation       | Admission pre-reserves estimated task cost atomically; refunded on lease/CAS failure; reconciled on execution finish. | `core/capabilities/admission.py`, `core/orchestrator/dispatch_model.py` | `core/orchestrator/tests/test_concurrent_dag_scheduler.py`                        | Phase 15.4 | `INTEGRATION_VERIFIED` |
+| SCHED-005 | Terminal Transition Exclusivity               | Exactly one terminal transition (COMPLETED/FAILED/TIMED_OUT/CANCELLED) commits via CAS; late worker results discarded. | `core/orchestrator/scheduler.py`, `core/orchestrator/dispatch_model.py` | `core/orchestrator/tests/test_concurrent_dag_scheduler.py`                        | Phase 15.4 | `INTEGRATION_VERIFIED` |
+
+---
+
 # 31. Governing Principle
 
 > **If we cannot point from an architectural requirement to a contract, from that contract to an implementation boundary, and from that implementation to executable evidence, RYU AI is not yet proven.**

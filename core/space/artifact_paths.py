@@ -7,8 +7,8 @@ Canonical structure:
     <base_working_dir>/artifacts/<space_id>/<worker_type>/<filename>
 
 Core Boundary Rule:
-    This module is part of the deterministic core (core/space/) and MUST NOT import
-    from agents/, workers/, skills/, workflows/, llm/, channels/, or memory/.
+    This module is part of the deterministic core (core/space/) and MUST NOT
+    import anything from agents/, workers/, skills/, workflows/, llm/, channels/, or memory/.
 """
 
 from __future__ import annotations

@@ -25,6 +25,10 @@ from datetime import datetime, timedelta, timezone
 
 import psycopg2
 import pytest
+
+if not os.environ.get("RYU_INTEGRATION_TESTS") == "1":
+    pytest.skip("Set RYU_INTEGRATION_TESTS=1 to run PostgreSQL integration tests", allow_module_level=True)
+
 from ryu.pulse_bus.config import PostgresConfig
 from ryu.pulse_bus.pulse import Pulse
 
@@ -67,8 +71,12 @@ def pg_config() -> PostgresConfig:
 @pytest.fixture
 def clean_plan_store(pg_config: PostgresConfig):
     """Fixture providing a clean PostgresPlanStore connected to live PostgreSQL."""
-    store = PostgresPlanStore(config=pg_config)
-    conn = store._get_connection()
+    try:
+        store = PostgresPlanStore(config=pg_config)
+        conn = store._get_connection()
+    except (psycopg2.OperationalError, Exception) as exc:
+        pytest.skip(f"Live PostgreSQL service not available: {exc}")
+
     try:
         with conn:
             with conn.cursor() as cur:
@@ -78,13 +86,16 @@ def clean_plan_store(pg_config: PostgresConfig):
 
     yield store
 
-    conn = store._get_connection()
     try:
-        with conn:
-            with conn.cursor() as cur:
-                cur.execute("TRUNCATE TABLE plans, plan_history CASCADE;")
-    finally:
-        conn.close()
+        conn = store._get_connection()
+        try:
+            with conn:
+                with conn.cursor() as cur:
+                    cur.execute("TRUNCATE TABLE plans, plan_history CASCADE;")
+        finally:
+            conn.close()
+    except Exception:
+        pass
 
 
 def _unique_space_id(prefix: str = "space") -> str:
