@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import math
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -285,4 +287,142 @@ class AdaptationLayerProtocol(Protocol):
     ) -> list[ExperienceHint]:
         """Generate advisory experience hints strictly within the specified space."""
         ...
+
+
+# ── Phase 15.5: Semantic Memory & Experience Retrieval Protocols (ADR-0049, MEM-SEM-003) ──
+
+DEFAULT_MAX_INPUT_CHARS: int = 2048
+DEFAULT_MAX_BATCH_SIZE: int = 16
+
+
+def normalize_embedding_input(
+    text: str,
+    max_chars: int = DEFAULT_MAX_INPUT_CHARS,
+    fail_on_oversized: bool = False,
+) -> str:
+    """Normalize input text deterministically for embedding generation.
+
+    Enforces Unicode NFKC normalization, whitespace collapsing, and bounded character length.
+
+    Raises:
+        TypeError: If input is not a string.
+        ValueError: If input is empty, whitespace-only, or oversized when fail_on_oversized=True.
+    """
+    if not isinstance(text, str):
+        raise TypeError(f"Embedding input must be a string, got {type(text).__name__}")
+
+    # Step 1: Unicode normalization (NFKC)
+    normalized = unicodedata.normalize("NFKC", text)
+
+    # Step 2: Whitespace normalization (collapse consecutive whitespace, strip ends)
+    normalized = " ".join(normalized.split())
+
+    # Step 3: Empty check
+    if not normalized:
+        raise ValueError("Embedding input text must not be empty or whitespace-only")
+
+    # Step 4: Max length bounding
+    if len(normalized) > max_chars:
+        if fail_on_oversized:
+            raise ValueError(
+                f"Embedding input length {len(normalized)} exceeds maximum allowed {max_chars} characters"
+            )
+        normalized = normalized[:max_chars].rstrip()
+
+    return normalized
+
+
+@dataclass(frozen=True)
+class EmbeddingResult:
+    """Immutable, validated embedding representation (MEM-SEM-003, ADR-0049).
+
+    Captures vector components and model provenance metadata with strict numerical validation.
+    """
+
+    vector: tuple[float, ...]
+    model: str
+    dimension: int
+    version: str
+
+    def __post_init__(self) -> None:
+        if not self.model or not self.model.strip():
+            raise ValueError("model must not be empty")
+        if not self.version or not str(self.version).strip():
+            raise ValueError("version must not be empty")
+        if self.dimension <= 0:
+            raise ValueError(f"dimension must be positive, got {self.dimension}")
+
+        # Enforce tuple type for immutability
+        if not isinstance(self.vector, tuple):
+            object.__setattr__(self, "vector", tuple(self.vector))
+
+        if len(self.vector) != self.dimension:
+            raise ValueError(
+                f"vector length {len(self.vector)} does not match declared dimension {self.dimension}"
+            )
+
+        # Numerical validation: finite numbers only (no NaN, no Inf)
+        for i, val in enumerate(self.vector):
+            if not isinstance(val, (int, float)):
+                raise TypeError(f"vector component at index {i} must be a float, got {type(val).__name__}")
+            if math.isnan(val):
+                raise ValueError(f"vector component at index {i} must not be NaN")
+            if math.isinf(val):
+                raise ValueError(f"vector component at index {i} must not be infinite")
+
+    def norm(self) -> float:
+        """Compute the L2 Euclidean norm of the vector."""
+        return math.sqrt(sum(x * x for x in self.vector))
+
+    def to_dict(self) -> dict[str, Any]:
+        """Deterministic dictionary serialization."""
+        return {
+            "model": self.model,
+            "dimension": self.dimension,
+            "version": self.version,
+            "vector": list(self.vector),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EmbeddingResult:
+        """Reconstruct EmbeddingResult from serialized dictionary."""
+        return cls(
+            vector=tuple(float(x) for x in data["vector"]),
+            model=str(data["model"]),
+            dimension=int(data["dimension"]),
+            version=str(data["version"]),
+        )
+
+
+@runtime_checkable
+class EmbeddingProviderProtocol(Protocol):
+    """Protocol for provider-independent embedding generation (MEM-SEM-003, ADR-0049).
+
+    Core owns this protocol. Implementations reside strictly outside core (AGENTS.md §7).
+    Uses standard-library types only; zero dependencies on external ML frameworks.
+    """
+
+    @property
+    def model_name(self) -> str:
+        """Model or provider identifier."""
+        ...
+
+    @property
+    def dimension(self) -> int:
+        """Declared vector dimension."""
+        ...
+
+    @property
+    def version(self) -> str:
+        """Version string of the embedding provider / algorithm."""
+        ...
+
+    def embed(self, text: str) -> EmbeddingResult:
+        """Generate an embedding for a single text input."""
+        ...
+
+    def embed_batch(self, texts: list[str]) -> list[EmbeddingResult]:
+        """Generate embeddings for a batch of text inputs preserving order."""
+        ...
+
 

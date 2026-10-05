@@ -9,6 +9,7 @@ from memory.adapters.in_memory import InMemoryMemoryAdapter
 from memory.adapters.neo4j_stub import Neo4jAdapterStub
 from memory.adapters.postgres import PostgreSQLMemoryAdapter
 from memory.adapters.qdrant_stub import QdrantAdapterStub
+from memory.embeddings.deterministic_mock import DeterministicMockEmbeddingProvider
 from memory.evaluation import (
     EvaluationCase,
     EvaluationModule,
@@ -29,6 +30,7 @@ __all__ = [
     "QdrantAdapterStub",
     "Neo4jAdapterStub",
     "Reflector",
+    "DeterministicMockEmbeddingProvider",
     "EvaluationModule",
     "EvaluationResult",
     "FrozenTrace",
