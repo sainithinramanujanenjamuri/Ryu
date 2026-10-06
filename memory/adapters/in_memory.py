@@ -9,17 +9,25 @@ spec §4 (Space Memory), MEM-001..006, ADR-0033..0035 — Phase 10
 from __future__ import annotations
 
 import threading
+from datetime import datetime, timezone
 from typing import Callable
 
 from core.space.memory_protocol import (
+    EmbeddingProviderProtocol,
     EmbeddingResult,
     ExperienceQuery,
     ExperienceRecord,
     KnowledgeEntry,
     PromotionAuthorization,
+    ScoredExperienceRecord,
+    SemanticExperienceQuery,
     SpaceIsolationViolation,
     SpaceMemoryProtocol,
     verify_promotion_authorization,
+)
+from memory.retrieval.ranker import (
+    deterministic_rank_candidates,
+    resolve_query_embedding,
 )
 
 
@@ -30,6 +38,8 @@ class InMemoryMemoryAdapter(SpaceMemoryProtocol):
     - Thread-safe via RLock.
     - Space isolation: Records stored in Space A cannot be retrieved by queries for Space B.
     - Global knowledge writes require valid, unconsumed PromotionAuthorization.
+    - Bounded multi-prong semantic candidate selection (C <= 50, MEM-SEM-001).
+    - Deterministic tie-breaking similarity ranking (K <= 5, MEM-SEM-002).
     """
 
     def __init__(
@@ -42,6 +52,15 @@ class InMemoryMemoryAdapter(SpaceMemoryProtocol):
         self._lock = threading.RLock()
         # [space_id][experience_id] -> ExperienceRecord
         self._experiences: dict[str, dict[str, ExperienceRecord]] = {}
+        # Secondary indexes for candidate generation (MEM-SEM-001)
+        # [space_id][failure_fingerprint] -> list[experience_id]
+        self._fingerprint_idx: dict[str, dict[str, list[str]]] = {}
+        # [space_id][capability] -> list[experience_id]
+        self._capability_idx: dict[str, dict[str, list[str]]] = {}
+        # [space_id][error_class] -> list[experience_id]
+        self._error_class_idx: dict[str, dict[str, list[str]]] = {}
+        # [space_id] -> list[experience_id] in recency order
+        self._recency_idx: dict[str, list[str]] = {}
         # [knowledge_id] -> KnowledgeEntry
         self._global_knowledge: dict[str, KnowledgeEntry] = {}
         # consumed promotion_ids (single-use enforcement)
@@ -74,6 +93,41 @@ class InMemoryMemoryAdapter(SpaceMemoryProtocol):
         with self._lock:
             space_map = self._experiences.setdefault(effective_record.space_id, {})
             space_map[effective_record.experience_id] = effective_record
+
+            # Update secondary indexes for candidate selection
+            sid = effective_record.space_id
+            eid = effective_record.experience_id
+
+            if effective_record.failure_fingerprint:
+                fp_map = self._fingerprint_idx.setdefault(sid, {})
+                fp_list = fp_map.setdefault(effective_record.failure_fingerprint, [])
+                if eid not in fp_list:
+                    fp_list.append(eid)
+
+            cap = (
+                effective_record.action.get("capability")
+                or effective_record.situation.get("capability")
+            )
+            if cap:
+                cap_str = str(cap).strip().lower()
+                cap_map = self._capability_idx.setdefault(sid, {})
+                cap_list = cap_map.setdefault(cap_str, [])
+                if eid not in cap_list:
+                    cap_list.append(eid)
+
+            err = effective_record.applicable_context.get("error_class")
+            if err:
+                err_str = str(err).strip().lower()
+                err_map = self._error_class_idx.setdefault(sid, {})
+                err_list = err_map.setdefault(err_str, [])
+                if eid not in err_list:
+                    err_list.append(eid)
+
+            rec_list = self._recency_idx.setdefault(sid, [])
+            if eid in rec_list:
+                rec_list.remove(eid)
+            rec_list.append(eid)
+
             return effective_record.experience_id
 
     def get_experience(
@@ -87,14 +141,110 @@ class InMemoryMemoryAdapter(SpaceMemoryProtocol):
         with self._lock:
             return self._experiences.get(space_id, {}).get(experience_id)
 
-    def list_experiences(self, space_id: str) -> list[ExperienceRecord]:
-        """List all experiences belonging strictly to space_id."""
+    def list_experiences(
+        self, space_id: str, limit: int = 50, before_stored_at: datetime | None = None
+    ) -> list[ExperienceRecord]:
+        """List all experiences belonging strictly to space_id with bounded pagination (MEM-SEM-001)."""
         if not space_id:
             raise SpaceIsolationViolation(
                 requesting_space="<empty>", target_space="<empty>"
             )
+        effective_limit = min(max(1, limit), 100)
         with self._lock:
-            return list(self._experiences.get(space_id, {}).values())
+            records = list(self._experiences.get(space_id, {}).values())
+
+        if before_stored_at is not None:
+            records = [r for r in records if r.stored_at < before_stored_at]
+
+        def _sort_key(r: ExperienceRecord) -> tuple[float, str]:
+            ts = (
+                r.stored_at.timestamp()
+                if r.stored_at.tzinfo is not None
+                else r.stored_at.replace(tzinfo=timezone.utc).timestamp()
+            )
+            return (-ts, r.experience_id)
+
+        records.sort(key=_sort_key)
+        return records[:effective_limit]
+
+    def _get_semantic_candidates(
+        self, query: SemanticExperienceQuery
+    ) -> list[ExperienceRecord]:
+        """Bounded multi-prong candidate selection without scanning full space history (C <= 50, MEM-SEM-001).
+
+        Prongs:
+        1. Exact failure fingerprint matches (up to 10)
+        2. Capability and error-class structured matches (up to 25)
+        3. Recent space execution recency window (up to 20)
+        Deduplicated in priority order and clamped to C <= 50.
+        """
+        if not query.space_id or not query.space_id.strip():
+            raise SpaceIsolationViolation(
+                requesting_space=query.space_id or "<empty>",
+                target_space=query.space_id or "<empty>",
+            )
+
+        with self._lock:
+            space_records = self._experiences.get(query.space_id, {})
+            if not space_records:
+                return []
+
+            candidate_ids: list[str] = []
+
+            # Prong A: Exact failure fingerprint matches (slot priority 1, max 10)
+            target_fp = query.failure_fingerprint or query.situation_hint.get("failure_fingerprint")
+            if target_fp:
+                fp_matches = self._fingerprint_idx.get(query.space_id, {}).get(str(target_fp), [])
+                for eid in reversed(fp_matches[-10:]):
+                    if eid not in candidate_ids:
+                        candidate_ids.append(eid)
+
+            # Prong B: Capability & error-class matches (slot priority 2, max 25)
+            cap = query.situation_hint.get("capability")
+            err = query.situation_hint.get("error_class")
+            prong_b_ids: list[str] = []
+            if cap:
+                cap_matches = self._capability_idx.get(query.space_id, {}).get(str(cap).strip().lower(), [])
+                for eid in reversed(cap_matches):
+                    if eid not in candidate_ids and eid not in prong_b_ids:
+                        prong_b_ids.append(eid)
+                        if len(prong_b_ids) >= 25:
+                            break
+            if err and len(prong_b_ids) < 25:
+                err_matches = self._error_class_idx.get(query.space_id, {}).get(str(err).strip().lower(), [])
+                for eid in reversed(err_matches):
+                    if eid not in candidate_ids and eid not in prong_b_ids:
+                        prong_b_ids.append(eid)
+                        if len(prong_b_ids) >= 25:
+                            break
+            candidate_ids.extend(prong_b_ids[:25])
+
+            # Prong C: Recent space recency window (slot priority 3, max 20)
+            rec_list = self._recency_idx.get(query.space_id, [])
+            for eid in reversed(rec_list[-20:]):
+                if eid not in candidate_ids:
+                    candidate_ids.append(eid)
+
+            # Clamp pre-ranking candidate set to C <= 50
+            clamped_ids = candidate_ids[:50]
+            return [space_records[eid] for eid in clamped_ids if eid in space_records]
+
+    def retrieve_semantic_experiences(
+        self,
+        query: SemanticExperienceQuery,
+        embedding_provider: EmbeddingProviderProtocol | None = None,
+    ) -> list[ScoredExperienceRecord]:
+        """Retrieve and deterministically rank experiences using bounded multi-prong retrieval (MEM-SEM-001, MEM-SEM-002)."""
+        query_emb = resolve_query_embedding(query, embedding_provider)
+        candidates = self._get_semantic_candidates(query)
+        target_fp = query.failure_fingerprint or query.situation_hint.get("failure_fingerprint")
+        return deterministic_rank_candidates(
+            candidates=candidates,
+            query_emb=query_emb,
+            top_k=query.top_k,
+            min_similarity=query.min_similarity,
+            target_fingerprint=str(target_fp) if target_fp else None,
+        )
 
     def query_similar_experiences(
         self, query: ExperienceQuery

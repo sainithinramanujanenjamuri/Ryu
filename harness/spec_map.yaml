@@ -2138,9 +2138,9 @@ spec_map:
     contract:
       file: "core/space/memory_protocol.py"
       rule: "SpaceMemoryProtocol candidate retrieval strictly scoped to space_id and bounded by C_max <= 50"
-    harness_case: "harness/cases/memory/test_phase15_5_contracts_governance.py::TestPhase15_5Governance::test_all_phase15_5_contract_ids_defined"
+    harness_case: "memory/tests/test_phase15_5_3_retrieval.py::TestPhase15_5_3Retrieval::test_ret_01_candidate_generation_bounded"
     roadmap_phase: 15.5
-    evidence_state: "ARCHITECTURAL_TARGET"
+    evidence_state: "UNIT_VERIFIED"
 
   - id: MEM-SEM-002
     title: "Deterministic Semantic Similarity Ranking"
@@ -2151,9 +2151,9 @@ spec_map:
     contract:
       file: "core/space/memory_protocol.py"
       rule: "Deterministic dot-product similarity ranking and quantized tie-breaking with K_max <= 5"
-    harness_case: "harness/cases/memory/test_phase15_5_contracts_governance.py::TestPhase15_5Governance::test_all_phase15_5_contract_ids_defined"
+    harness_case: "memory/tests/test_phase15_5_3_retrieval.py::TestPhase15_5_3Retrieval::test_ret_02_deterministic_ranking_tie_breaker"
     roadmap_phase: 15.5
-    evidence_state: "ARCHITECTURAL_TARGET"
+    evidence_state: "UNIT_VERIFIED"
 
   - id: MEM-SEM-003
     title: "Decoupled Embedding Boundary"
@@ -2164,9 +2164,9 @@ spec_map:
     contract:
       file: "core/space/memory_protocol.py"
       rule: "EmbeddingProviderProtocol defined in core with zero external ML/LLM library imports"
-    harness_case: "harness/cases/memory/test_phase15_5_contracts_governance.py::TestPhase15_5Governance::test_core_boundary_independence"
+    harness_case: "memory/tests/test_phase15_5_1_embeddings.py::TestPhase15_5_1Embeddings::test_emb_001_provider_protocol_conformance"
     roadmap_phase: 15.5
-    evidence_state: "ARCHITECTURAL_TARGET"
+    evidence_state: "UNIT_VERIFIED"
 
   - id: MEM-SEM-004
     title: "Graceful Semantic Retrieval Degradation"

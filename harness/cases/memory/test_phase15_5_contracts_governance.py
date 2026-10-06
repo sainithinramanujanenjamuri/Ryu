@@ -14,9 +14,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
-
-import pytest
 
 
 def _get_repo_root() -> Path:
@@ -64,9 +61,9 @@ class TestPhase15_5Governance:
         content = matrix_path.read_text(encoding="utf-8")
         for cid in PHASE_15_5_CONTRACT_IDS:
             assert f"| {cid} |" in content, f"Contract {cid} missing from CONTRACT_MATRIX.md"
-            # Verify status is ARCHITECTURAL_TARGET (not overclaimed as verified)
-            pattern = rf"\|\s*{re.escape(cid)}\s*\|[^|]+\|[^|]+\|[^|]+\|[^|]+\|[^|]+\|\s*`?ARCHITECTURAL_TARGET`?\s*\|"
-            assert re.search(pattern, content), f"Contract {cid} must have status ARCHITECTURAL_TARGET"
+            # Verify status is ARCHITECTURAL_TARGET or UNIT_VERIFIED
+            pattern = rf"\|\s*{re.escape(cid)}\s*\|[^|]+\|[^|]+\|[^|]+\|[^|]+\|[^|]+\|\s*`?(?:ARCHITECTURAL_TARGET|UNIT_VERIFIED)`?\s*\|"
+            assert re.search(pattern, content), f"Contract {cid} must have status ARCHITECTURAL_TARGET or UNIT_VERIFIED"
 
     def test_spec_map_traceability(self) -> None:
         """Verify all Phase 15.5 contracts are mapped in harness/spec_map.yaml."""

@@ -10,13 +10,18 @@ spec §4 (Vector Store), §15 (Storage Layer) — Phase 11+
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from core.space.memory_protocol import (
+    EmbeddingProviderProtocol,
+    EmbeddingResult,
     ExperienceQuery,
     ExperienceRecord,
     KnowledgeEntry,
     PromotionAuthorization,
+    ScoredExperienceRecord,
+    SemanticExperienceQuery,
     SpaceMemoryProtocol,
 )
 
@@ -27,7 +32,9 @@ class QdrantAdapterStub(SpaceMemoryProtocol):
     def __init__(self, **kwargs: Any) -> None:
         self.kwargs = kwargs
 
-    def store_experience(self, record: ExperienceRecord) -> str:
+    def store_experience(
+        self, record: ExperienceRecord, embedding: EmbeddingResult | None = None
+    ) -> str:
         raise NotImplementedError("QdrantAdapter: spec §4 (Vector Store) — Phase 11+")
 
     def get_experience(
@@ -35,12 +42,21 @@ class QdrantAdapterStub(SpaceMemoryProtocol):
     ) -> ExperienceRecord | None:
         raise NotImplementedError("QdrantAdapter: spec §4 (Vector Store) — Phase 11+")
 
-    def list_experiences(self, space_id: str) -> list[ExperienceRecord]:
+    def list_experiences(
+        self, space_id: str, limit: int = 50, before_stored_at: datetime | None = None
+    ) -> list[ExperienceRecord]:
         raise NotImplementedError("QdrantAdapter: spec §4 (Vector Store) — Phase 11+")
 
     def query_similar_experiences(
         self, query: ExperienceQuery
     ) -> list[ExperienceRecord]:
+        raise NotImplementedError("QdrantAdapter: spec §4 (Vector Store) — Phase 11+")
+
+    def retrieve_semantic_experiences(
+        self,
+        query: SemanticExperienceQuery,
+        embedding_provider: EmbeddingProviderProtocol | None = None,
+    ) -> list[ScoredExperienceRecord]:
         raise NotImplementedError("QdrantAdapter: spec §4 (Vector Store) — Phase 11+")
 
     def store_knowledge(

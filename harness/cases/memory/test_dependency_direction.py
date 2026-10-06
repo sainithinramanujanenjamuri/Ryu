@@ -45,7 +45,7 @@ def test_core_does_not_import_memory() -> None:
                         )
 
     assert not violations, (
-        f"AGENTS.md §4 boundary violated: core/ imports from memory/:\n"
+        "AGENTS.md §4 boundary violated: core/ imports from memory/:\n"
         + "\n".join(violations)
     )
 

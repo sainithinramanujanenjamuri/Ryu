@@ -10,7 +10,7 @@ spec §4 (Space Memory), §15 (Storage Layer), MEM-001..006, ADR-0033..0035 — 
 from __future__ import annotations
 
 import json
-from datetime import timezone
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 try:
@@ -23,15 +23,22 @@ except ImportError:  # pragma: no cover
 from ryu.pulse_bus.config import PostgresConfig
 
 from core.space.memory_protocol import (
+    EmbeddingProviderProtocol,
     EmbeddingResult,
     ExperienceQuery,
     ExperienceRecord,
     KnowledgeEntry,
     MemoryFailure,
     PromotionAuthorization,
+    ScoredExperienceRecord,
+    SemanticExperienceQuery,
     SpaceIsolationViolation,
     SpaceMemoryProtocol,
     verify_promotion_authorization,
+)
+from memory.retrieval.ranker import (
+    deterministic_rank_candidates,
+    resolve_query_embedding,
 )
 
 
@@ -169,30 +176,173 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
         except Exception as e:
             raise MemoryFailure(operation="get_experience", reason=str(e)) from e
 
-    def list_experiences(self, space_id: str) -> list[ExperienceRecord]:
-        """List all experiences belonging strictly to space_id."""
+    def list_experiences(
+        self, space_id: str, limit: int = 50, before_stored_at: datetime | None = None
+    ) -> list[ExperienceRecord]:
+        """List all experiences belonging strictly to space_id with bounded pagination (MEM-SEM-001)."""
         if not space_id:
             raise SpaceIsolationViolation(
                 requesting_space="<empty>", target_space="<empty>"
             )
 
-        sql = """
-            SELECT experience_id, space_id, situation, action, outcome,
-                   counterfactual, applicable_context, stored_at,
-                   embedding, embedding_model, embedding_dimension,
-                   embedding_version, failure_fingerprint, provenance_ref
-            FROM space_experiences
-            WHERE space_id = %s
-            ORDER BY stored_at DESC;
-        """
+        effective_limit = min(max(1, limit), 100)
         try:
             with self._get_conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(sql, (space_id,))
+                    if before_stored_at is not None:
+                        sql = """
+                            SELECT experience_id, space_id, situation, action, outcome,
+                                   counterfactual, applicable_context, stored_at,
+                                   embedding, embedding_model, embedding_dimension,
+                                   embedding_version, failure_fingerprint, provenance_ref
+                            FROM space_experiences
+                            WHERE space_id = %s AND stored_at < %s
+                            ORDER BY stored_at DESC, experience_id ASC
+                            LIMIT %s;
+                        """
+                        cur.execute(sql, (space_id, before_stored_at, effective_limit))
+                    else:
+                        sql = """
+                            SELECT experience_id, space_id, situation, action, outcome,
+                                   counterfactual, applicable_context, stored_at,
+                                   embedding, embedding_model, embedding_dimension,
+                                   embedding_version, failure_fingerprint, provenance_ref
+                            FROM space_experiences
+                            WHERE space_id = %s
+                            ORDER BY stored_at DESC, experience_id ASC
+                            LIMIT %s;
+                        """
+                        cur.execute(sql, (space_id, effective_limit))
                     rows = cur.fetchall()
                     return [self._row_to_experience(r) for r in rows]
         except Exception as e:
+            if isinstance(e, SpaceIsolationViolation):
+                raise
             raise MemoryFailure(operation="list_experiences", reason=str(e)) from e
+
+    def _get_semantic_candidates(
+        self, query: SemanticExperienceQuery
+    ) -> list[ExperienceRecord]:
+        """Bounded multi-prong candidate selection via PostgreSQL (C <= 50, MEM-SEM-001).
+
+        Prongs:
+        1. Exact failure fingerprint matches (slot priority 1, max 10)
+        2. Structured capability and error-class matches (slot priority 2, max 25)
+        3. Space recency window (slot priority 3, max 20)
+        """
+        if not query.space_id or not query.space_id.strip():
+            raise SpaceIsolationViolation(
+                requesting_space=query.space_id or "<empty>",
+                target_space=query.space_id or "<empty>",
+            )
+
+        cols = """
+            experience_id, space_id, situation, action, outcome,
+            counterfactual, applicable_context, stored_at,
+            embedding, embedding_model, embedding_dimension,
+            embedding_version, failure_fingerprint, provenance_ref
+        """
+        candidate_map: dict[str, ExperienceRecord] = {}
+        ordered_ids: list[str] = []
+
+        try:
+            with self._get_conn() as conn:
+                with conn.cursor() as cur:
+                    # Prong A: Exact failure fingerprint matches (up to 10)
+                    target_fp = query.failure_fingerprint or query.situation_hint.get("failure_fingerprint")
+                    if target_fp:
+                        sql_a = f"""
+                            SELECT {cols}
+                            FROM space_experiences
+                            WHERE space_id = %s AND failure_fingerprint = %s
+                            ORDER BY stored_at DESC
+                            LIMIT 10;
+                        """
+                        cur.execute(sql_a, (query.space_id, str(target_fp)))
+                        for row in cur.fetchall():
+                            rec = self._row_to_experience(row)
+                            if rec.experience_id not in candidate_map:
+                                candidate_map[rec.experience_id] = rec
+                                ordered_ids.append(rec.experience_id)
+
+                    # Prong B: Structured capability and error-class matches (up to 25)
+                    cap = query.situation_hint.get("capability")
+                    err = query.situation_hint.get("error_class")
+                    if cap and err:
+                        sql_b = f"""
+                            SELECT {cols}
+                            FROM space_experiences
+                            WHERE space_id = %s AND (action->>'capability' = %s OR applicable_context->>'error_class' = %s)
+                            ORDER BY stored_at DESC
+                            LIMIT 25;
+                        """
+                        cur.execute(sql_b, (query.space_id, str(cap), str(err)))
+                    elif cap:
+                        sql_b = f"""
+                            SELECT {cols}
+                            FROM space_experiences
+                            WHERE space_id = %s AND action->>'capability' = %s
+                            ORDER BY stored_at DESC
+                            LIMIT 25;
+                        """
+                        cur.execute(sql_b, (query.space_id, str(cap)))
+                    elif err:
+                        sql_b = f"""
+                            SELECT {cols}
+                            FROM space_experiences
+                            WHERE space_id = %s AND applicable_context->>'error_class' = %s
+                            ORDER BY stored_at DESC
+                            LIMIT 25;
+                        """
+                        cur.execute(sql_b, (query.space_id, str(err)))
+                    else:
+                        sql_b = None
+
+                    if sql_b is not None:
+                        for row in cur.fetchall():
+                            rec = self._row_to_experience(row)
+                            if rec.experience_id not in candidate_map:
+                                candidate_map[rec.experience_id] = rec
+                                ordered_ids.append(rec.experience_id)
+
+                    # Prong C: Recent space execution recency window (up to 20)
+                    sql_c = f"""
+                        SELECT {cols}
+                        FROM space_experiences
+                        WHERE space_id = %s
+                        ORDER BY stored_at DESC
+                        LIMIT 20;
+                    """
+                    cur.execute(sql_c, (query.space_id,))
+                    for row in cur.fetchall():
+                        rec = self._row_to_experience(row)
+                        if rec.experience_id not in candidate_map:
+                            candidate_map[rec.experience_id] = rec
+                            ordered_ids.append(rec.experience_id)
+
+            # Clamp pre-ranking candidate pool to C <= 50
+            return [candidate_map[eid] for eid in ordered_ids[:50]]
+        except Exception as e:
+            if isinstance(e, SpaceIsolationViolation):
+                raise
+            raise MemoryFailure(operation="_get_semantic_candidates", reason=str(e)) from e
+
+    def retrieve_semantic_experiences(
+        self,
+        query: SemanticExperienceQuery,
+        embedding_provider: EmbeddingProviderProtocol | None = None,
+    ) -> list[ScoredExperienceRecord]:
+        """Retrieve and deterministically rank experiences using bounded multi-prong retrieval (MEM-SEM-001, MEM-SEM-002)."""
+        query_emb = resolve_query_embedding(query, embedding_provider)
+        candidates = self._get_semantic_candidates(query)
+        target_fp = query.failure_fingerprint or query.situation_hint.get("failure_fingerprint")
+        return deterministic_rank_candidates(
+            candidates=candidates,
+            query_emb=query_emb,
+            top_k=query.top_k,
+            min_similarity=query.min_similarity,
+            target_fingerprint=str(target_fp) if target_fp else None,
+        )
 
     def query_similar_experiences(
         self, query: ExperienceQuery

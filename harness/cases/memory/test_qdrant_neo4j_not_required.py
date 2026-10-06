@@ -17,8 +17,6 @@ import pytest
 from core.space.memory_protocol import (
     ExperienceQuery,
     ExperienceRecord,
-    KnowledgeEntry,
-    PromotionAuthorization,
 )
 from memory.adapters.neo4j_stub import Neo4jAdapterStub
 from memory.adapters.qdrant_stub import QdrantAdapterStub

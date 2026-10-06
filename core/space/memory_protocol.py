@@ -273,6 +273,102 @@ def verify_promotion_authorization(
     return hmac.compare_digest(expected, auth.signature)
 
 
+def compute_cosine_similarity(
+    vec_a: tuple[float, ...] | list[float],
+    vec_b: tuple[float, ...] | list[float],
+) -> float:
+    """Compute deterministic cosine similarity between two finite float vectors (MEM-SEM-002).
+
+    Returns dot product normalized by Euclidean L2 norms, clamped to [-1.0, 1.0].
+    Raises ValueError on dimension mismatch, empty vectors, or non-finite elements.
+    """
+    if len(vec_a) != len(vec_b):
+        raise ValueError(f"Vector dimension mismatch: {len(vec_a)} != {len(vec_b)}")
+    if len(vec_a) == 0:
+        raise ValueError("Vectors must not be empty")
+
+    norm_a_sq = 0.0
+    norm_b_sq = 0.0
+    dot = 0.0
+
+    for i in range(len(vec_a)):
+        val_a = vec_a[i]
+        val_b = vec_b[i]
+        if not isinstance(val_a, (int, float)) or not isinstance(val_b, (int, float)):
+            raise TypeError("Vector components must be floats or ints")
+        if math.isnan(val_a) or math.isnan(val_b):
+            raise ValueError("Vector components must not be NaN")
+        if math.isinf(val_a) or math.isinf(val_b):
+            raise ValueError("Vector components must not be infinite")
+        norm_a_sq += float(val_a) * float(val_a)
+        norm_b_sq += float(val_b) * float(val_b)
+        dot += float(val_a) * float(val_b)
+
+    if norm_a_sq <= 0.0 or norm_b_sq <= 0.0:
+        return 0.0
+
+    norm_a = math.sqrt(norm_a_sq)
+    norm_b = math.sqrt(norm_b_sq)
+    sim = dot / (norm_a * norm_b)
+    if math.isnan(sim):
+        return 0.0
+    return max(-1.0, min(1.0, sim))
+
+
+@dataclass(frozen=True)
+class SemanticExperienceQuery:
+    """Read-only query specification for bounded Space-scoped semantic retrieval (MEM-SEM-001, MEM-SEM-002)."""
+
+    space_id: str
+    query_text: str = ""
+    query_embedding: EmbeddingResult | None = None
+    situation_hint: dict[str, Any] = field(default_factory=dict)
+    failure_fingerprint: str | None = None
+    top_k: int = 5
+    min_similarity: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not self.space_id or not self.space_id.strip():
+            raise SpaceIsolationViolation(
+                requesting_space=self.space_id or "<empty>",
+                target_space=self.space_id or "<empty>",
+            )
+        if self.top_k < 1 or self.top_k > 5:
+            raise ValueError(
+                f"top_k must be between 1 and 5 (inclusive), got {self.top_k} (MEM-SEM-002)"
+            )
+        if math.isnan(self.min_similarity) or math.isinf(self.min_similarity):
+            raise ValueError("min_similarity must be a finite float")
+        if self.min_similarity < -1.0 or self.min_similarity > 1.0:
+            raise ValueError(
+                f"min_similarity must be between -1.0 and 1.0, got {self.min_similarity}"
+            )
+
+
+@dataclass(frozen=True)
+class ScoredExperienceRecord:
+    """Immutable, scored experience record returned by semantic retrieval (MEM-SEM-002)."""
+
+    record: ExperienceRecord
+    similarity_score: float
+    rank: int
+    exact_fingerprint_match: bool = False
+
+    def __post_init__(self) -> None:
+        if math.isnan(self.similarity_score) or math.isinf(self.similarity_score):
+            raise ValueError("similarity_score must be a finite float")
+        if self.rank < 1 or self.rank > 5:
+            raise ValueError(f"rank must be between 1 and 5 (inclusive), got {self.rank}")
+
+    @property
+    def experience_id(self) -> str:
+        return self.record.experience_id
+
+    @property
+    def space_id(self) -> str:
+        return self.record.space_id
+
+
 class SpaceMemoryProtocol(Protocol):
     """Protocol for Space-scoped memory operations (ADR-0033)."""
 
@@ -288,14 +384,24 @@ class SpaceMemoryProtocol(Protocol):
         """Retrieve an experience record strictly within the specified space."""
         ...
 
-    def list_experiences(self, space_id: str) -> list[ExperienceRecord]:
-        """List all experiences belonging strictly to the specified space."""
+    def list_experiences(
+        self, space_id: str, limit: int = 50, before_stored_at: datetime | None = None
+    ) -> list[ExperienceRecord]:
+        """List experiences belonging strictly to the specified space with bounded pagination (MEM-SEM-001)."""
         ...
 
     def query_similar_experiences(
         self, query: ExperienceQuery
     ) -> list[ExperienceRecord]:
         """Query experiences within the query's space_id matching situation hints."""
+        ...
+
+    def retrieve_semantic_experiences(
+        self,
+        query: SemanticExperienceQuery,
+        embedding_provider: EmbeddingProviderProtocol | None = None,
+    ) -> list[ScoredExperienceRecord]:
+        """Retrieve and deterministically rank experiences using bounded multi-prong semantic retrieval (MEM-SEM-001, MEM-SEM-002)."""
         ...
 
     def store_knowledge(
