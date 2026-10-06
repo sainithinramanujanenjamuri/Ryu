@@ -453,13 +453,24 @@ class ExperienceHint:
 
     experience_id: str
     failed_capability: str
-    suggested_avoidance: list[str]
+    suggested_avoidance: list[str] | tuple[str, ...]
     outcome_summary: str
     counterfactual_summary: str
     relevance_score: float = 1.0
     source_space_id: str = ""
     suggested_alternative_capability: str = ""
     target_task_id: str = ""
+    provenance_ref: str | None = None
+    rank: int = 1
+    exact_fingerprint_match: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.experience_id or not self.experience_id.strip():
+            raise ValueError("experience_id must not be empty (Provenance requirement)")
+        if self.rank < 1 or self.rank > 5:
+            raise ValueError(f"rank must be between 1 and 5 (MEM-SEM-005), got {self.rank}")
+        if not isinstance(self.suggested_avoidance, tuple):
+            object.__setattr__(self, "suggested_avoidance", tuple(self.suggested_avoidance))
 
 
 @runtime_checkable

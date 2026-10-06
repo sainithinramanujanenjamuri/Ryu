@@ -2177,9 +2177,9 @@ spec_map:
     contract:
       file: "core/memory/adaptation.py"
       rule: "AdaptationLayer error containment falls back to metadata or zero hints without execution halt"
-    harness_case: "harness/cases/memory/test_phase15_5_contracts_governance.py::TestPhase15_5Governance::test_all_phase15_5_contract_ids_defined"
+    harness_case: "memory/tests/test_phase15_5_4_adaptation.py::TestPhase15_5_4AdaptationLayer::test_graceful_degradation_on_embedding_provider_failure"
     roadmap_phase: 15.5
-    evidence_state: "ARCHITECTURAL_TARGET"
+    evidence_state: "UNIT_VERIFIED"
 
   - id: MEM-SEM-005
     title: "Bounded Advisory Experience Hints"
@@ -2190,7 +2190,7 @@ spec_map:
     contract:
       file: "core/memory/adaptation.py"
       rule: "ExperienceHint immutable dataclass injected only into advisory ConvergenceProposal"
-    harness_case: "harness/cases/memory/test_phase15_5_contracts_governance.py::TestPhase15_5Governance::test_all_phase15_5_contract_ids_defined"
+    harness_case: "memory/tests/test_phase15_5_4_adaptation.py::TestPhase15_5_4AdaptationLayer::test_semantic_retrieval_feeds_adaptation_layer"
     roadmap_phase: 15.5
-    evidence_state: "ARCHITECTURAL_TARGET"
+    evidence_state: "UNIT_VERIFIED"
 

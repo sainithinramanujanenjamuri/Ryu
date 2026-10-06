@@ -3336,7 +3336,9 @@ class ConvergenceEngine:
                     "task_id": failed_task_id,
                     "error_class": diagnostic.failure_class.value,
                     "fingerprint": fingerprint,
+                    "failure_fingerprint": fingerprint,
                     "repair_iteration": new_iteration,
+                    "query_text": f"test repair failure in task '{failed_task_id}' class '{diagnostic.failure_class.value}' fingerprint '{fingerprint}'",
                 }
                 hints = self.adaptation_layer.generate_hints(
                     space_id=self.space_id,
@@ -3520,14 +3522,22 @@ class ConvergenceEngine:
                     "task_id": task_id or "__plan__",
                     "error_class": reason,
                     "fingerprint": fingerprint,
+                    "failure_fingerprint": fingerprint,
                 }
+                query_parts: list[str] = []
                 if task_id:
                     try:
                         cur_node = kernel.get_task_graph().get_node(task_id)
                         if cur_node is not None:
                             hint_query["capability"] = cur_node.capability
+                            query_parts.append(f"capability: {cur_node.capability}")
                     except Exception:
                         pass
+                if reason:
+                    query_parts.append(f"error: {reason}")
+                if fingerprint:
+                    query_parts.append(f"fingerprint: {fingerprint}")
+                hint_query["query_text"] = " ".join(query_parts) if query_parts else "task failure"
 
                 hints = self.adaptation_layer.generate_hints(
                     space_id=self.space_id,
