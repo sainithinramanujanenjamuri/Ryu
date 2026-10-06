@@ -556,16 +556,16 @@ In Phase 15.4, multiple independent tasks execute concurrently across worker thr
 - `ADAPT-001`..`005`: Closed-Loop Adaptation Contracts (Preserved)
 
 ### Proposed New Contracts for Phase 15.5
-1. **`MEM-SEM-001` (Bounded Candidate Retrieval & Paginated Experience Listing):**
+1. **`MEM-SEM-001` (Bounded Space-Scoped Candidate Retrieval):**
    - *Invariant:* Memory candidate retrieval is strictly Space-scoped ($C_{max} \le 50$); `list_experiences()` enforces bounded pagination ($limit \le 100$).
    - *Owner:* `core/space/memory_protocol.py` & memory adapters.
 2. **`MEM-SEM-002` (Deterministic Semantic Similarity Ranking):**
    - *Invariant:* Similarity scoring must use quantized $L_2$-normalized dot product with secondary tie-breaking on `stored_at DESC` and `experience_id ASC`.
    - *Owner:* `memory/retrieval/ranker.py` / `SpaceMemoryProtocol`.
-3. **`MEM-SEM-003` (Decoupled Embedding Protocol Boundary):**
+3. **`MEM-SEM-003` (Decoupled Embedding Boundary):**
    - *Invariant:* `core/` defines `EmbeddingProviderProtocol`; zero ML or LLM library imports in core. Provider implementations reside strictly outside core.
    - *Owner:* `core/space/memory_protocol.py`.
-4. **`MEM-SEM-004` (Graceful Degradation on Retrieval Failure):**
+4. **`MEM-SEM-004` (Graceful Semantic Retrieval Degradation):**
    - *Invariant:* Embedding provider or memory store failure must degrade to `CONTINUE_WITHOUT_MEMORY` or metadata fallback without blocking task execution or plan convergence.
    - *Owner:* `core/memory/adaptation.py` & `core/orchestrator/dispatch_model.py`.
 5. **`MEM-SEM-005` (Bounded Advisory Experience Hints):**

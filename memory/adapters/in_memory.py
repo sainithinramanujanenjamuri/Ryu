@@ -9,9 +9,10 @@ spec §4 (Space Memory), MEM-001..006, ADR-0033..0035 — Phase 10
 from __future__ import annotations
 
 import threading
-from typing import Any, Callable
+from typing import Callable
 
 from core.space.memory_protocol import (
+    EmbeddingResult,
     ExperienceQuery,
     ExperienceRecord,
     KnowledgeEntry,
@@ -56,12 +57,24 @@ class InMemoryMemoryAdapter(SpaceMemoryProtocol):
 
         return hashlib.sha256(f"kernel-signing-key-{space_id}".encode("utf-8")).digest()
 
-    def store_experience(self, record: ExperienceRecord) -> str:
+    def store_experience(
+        self, record: ExperienceRecord, embedding: EmbeddingResult | None = None
+    ) -> str:
         """Store an experience record under its owning space_id."""
+        if not record.space_id or not record.space_id.strip():
+            raise SpaceIsolationViolation(
+                requesting_space="<empty>", target_space="<empty>"
+            )
+
+        if embedding is not None:
+            effective_record = record.with_embedding(embedding)
+        else:
+            effective_record = record
+
         with self._lock:
-            space_map = self._experiences.setdefault(record.space_id, {})
-            space_map[record.experience_id] = record
-            return record.experience_id
+            space_map = self._experiences.setdefault(effective_record.space_id, {})
+            space_map[effective_record.experience_id] = effective_record
+            return effective_record.experience_id
 
     def get_experience(
         self, space_id: str, experience_id: str

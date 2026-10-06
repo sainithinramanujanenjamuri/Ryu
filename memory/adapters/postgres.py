@@ -10,7 +10,7 @@ spec §4 (Space Memory), §15 (Storage Layer), MEM-001..006, ADR-0033..0035 — 
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import timezone
 from typing import Any, Callable
 
 try:
@@ -23,6 +23,7 @@ except ImportError:  # pragma: no cover
 from ryu.pulse_bus.config import PostgresConfig
 
 from core.space.memory_protocol import (
+    EmbeddingResult,
     ExperienceQuery,
     ExperienceRecord,
     KnowledgeEntry,
@@ -73,32 +74,70 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
         except Exception as e:
             raise MemoryFailure(operation="connect", reason=str(e)) from e
 
-    def store_experience(self, record: ExperienceRecord) -> str:
+    def store_experience(
+        self, record: ExperienceRecord, embedding: EmbeddingResult | None = None
+    ) -> str:
         """Durable append of an ExperienceRecord to space_experiences table."""
+        if not record.space_id or not record.space_id.strip():
+            raise SpaceIsolationViolation(
+                requesting_space="<empty>", target_space="<empty>"
+            )
+
+        if embedding is not None:
+            effective_record = record.with_embedding(embedding)
+        else:
+            effective_record = record
+
         sql = """
             INSERT INTO space_experiences (
                 experience_id, space_id, situation, action, outcome,
-                counterfactual, applicable_context, stored_at
+                counterfactual, applicable_context, stored_at,
+                embedding, embedding_model, embedding_dimension,
+                embedding_version, failure_fingerprint, provenance_ref
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s
             )
-            ON CONFLICT (experience_id, space_id) DO NOTHING;
+            ON CONFLICT (experience_id, space_id) DO UPDATE SET
+                situation = EXCLUDED.situation,
+                action = EXCLUDED.action,
+                outcome = EXCLUDED.outcome,
+                counterfactual = EXCLUDED.counterfactual,
+                applicable_context = EXCLUDED.applicable_context,
+                stored_at = EXCLUDED.stored_at,
+                embedding = EXCLUDED.embedding,
+                embedding_model = EXCLUDED.embedding_model,
+                embedding_dimension = EXCLUDED.embedding_dimension,
+                embedding_version = EXCLUDED.embedding_version,
+                failure_fingerprint = EXCLUDED.failure_fingerprint,
+                provenance_ref = EXCLUDED.provenance_ref;
         """
+        embedding_val = (
+            Json(list(effective_record.embedding))
+            if effective_record.embedding is not None and Json is not None
+            else (json.dumps(list(effective_record.embedding)) if effective_record.embedding is not None else None)
+        )
         params = (
-            record.experience_id,
-            record.space_id,
-            Json(record.situation),
-            Json(record.action),
-            record.outcome,
-            record.counterfactual,
-            Json(record.applicable_context),
-            record.stored_at,
+            effective_record.experience_id,
+            effective_record.space_id,
+            Json(effective_record.situation) if Json is not None else json.dumps(effective_record.situation),
+            Json(effective_record.action) if Json is not None else json.dumps(effective_record.action),
+            effective_record.outcome,
+            effective_record.counterfactual,
+            Json(effective_record.applicable_context) if Json is not None else json.dumps(effective_record.applicable_context),
+            effective_record.stored_at,
+            embedding_val,
+            effective_record.embedding_model,
+            effective_record.embedding_dimension,
+            effective_record.embedding_version,
+            effective_record.failure_fingerprint,
+            effective_record.provenance_ref,
         )
         try:
             with self._get_conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(sql, params)
-            return record.experience_id
+            return effective_record.experience_id
         except Exception as e:
             raise MemoryFailure(operation="store_experience", reason=str(e)) from e
 
@@ -113,7 +152,9 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
 
         sql = """
             SELECT experience_id, space_id, situation, action, outcome,
-                   counterfactual, applicable_context, stored_at
+                   counterfactual, applicable_context, stored_at,
+                   embedding, embedding_model, embedding_dimension,
+                   embedding_version, failure_fingerprint, provenance_ref
             FROM space_experiences
             WHERE space_id = %s AND experience_id = %s;
         """
@@ -137,7 +178,9 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
 
         sql = """
             SELECT experience_id, space_id, situation, action, outcome,
-                   counterfactual, applicable_context, stored_at
+                   counterfactual, applicable_context, stored_at,
+                   embedding, embedding_model, embedding_dimension,
+                   embedding_version, failure_fingerprint, provenance_ref
             FROM space_experiences
             WHERE space_id = %s
             ORDER BY stored_at DESC;
@@ -157,7 +200,9 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
         """Query experiences within query.space_id."""
         sql = """
             SELECT experience_id, space_id, situation, action, outcome,
-                   counterfactual, applicable_context, stored_at
+                   counterfactual, applicable_context, stored_at,
+                   embedding, embedding_model, embedding_dimension,
+                   embedding_version, failure_fingerprint, provenance_ref
             FROM space_experiences
             WHERE space_id = %s
             ORDER BY stored_at DESC
@@ -306,6 +351,35 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
         stored_at = row[7]
         if stored_at and stored_at.tzinfo is None:
             stored_at = stored_at.replace(tzinfo=timezone.utc)
+
+        embedding: tuple[float, ...] | None = None
+        embedding_model: str | None = None
+        embedding_dim: int | None = None
+        embedding_ver: str | None = None
+        failure_fp: str | None = None
+        prov_ref: str | None = None
+
+        if len(row) > 8 and row[8] is not None:
+            raw_emb = row[8]
+            if isinstance(raw_emb, str):
+                raw_list = json.loads(raw_emb)
+            elif isinstance(raw_emb, (list, tuple)):
+                raw_list = raw_emb
+            else:
+                raw_list = list(raw_emb)
+            embedding = tuple(float(x) for x in raw_list)
+
+        if len(row) > 9 and row[9] is not None:
+            embedding_model = str(row[9])
+        if len(row) > 10 and row[10] is not None:
+            embedding_dim = int(row[10])
+        if len(row) > 11 and row[11] is not None:
+            embedding_ver = str(row[11])
+        if len(row) > 12 and row[12] is not None:
+            failure_fp = str(row[12])
+        if len(row) > 13 and row[13] is not None:
+            prov_ref = str(row[13])
+
         return ExperienceRecord(
             experience_id=row[0],
             space_id=row[1],
@@ -317,6 +391,12 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
             if isinstance(row[6], dict)
             else json.loads(row[6]),
             stored_at=stored_at,
+            embedding=embedding,
+            embedding_model=embedding_model,
+            embedding_dimension=embedding_dim,
+            embedding_version=embedding_ver,
+            failure_fingerprint=failure_fp,
+            provenance_ref=prov_ref,
         )
 
     def _row_to_knowledge(self, row: tuple) -> KnowledgeEntry:  # type: ignore[type-arg]

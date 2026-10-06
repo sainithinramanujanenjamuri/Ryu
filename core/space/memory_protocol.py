@@ -59,6 +59,7 @@ class ExperienceRecord:
     """Structured experience captured upon task outcome per §16 Component Contracts.
 
     The counterfactual field is mandatory to ensure learning is actionable (MEM-002).
+    Embedding metadata (Phase 15.5) supports durable semantic memory representation.
     """
 
     experience_id: str
@@ -69,6 +70,13 @@ class ExperienceRecord:
     counterfactual: str
     applicable_context: dict[str, Any]
     stored_at: datetime
+    # Phase 15.5 Semantic embedding & retrieval metadata (optional for backward compatibility)
+    embedding: tuple[float, ...] | None = None
+    embedding_model: str | None = None
+    embedding_dimension: int | None = None
+    embedding_version: str | None = None
+    failure_fingerprint: str | None = None
+    provenance_ref: str | None = None
 
     def __post_init__(self) -> None:
         if not self.experience_id or not self.experience_id.strip():
@@ -80,6 +88,86 @@ class ExperienceRecord:
                 "counterfactual must not be empty: an ExperienceRecord without a counterfactual "
                 "cannot be evaluated for behavioral adaptation (MEM-002, ADR-0034)"
             )
+
+        # Fallback failure_fingerprint from applicable_context
+        if self.failure_fingerprint is None and "failure_fingerprint" in self.applicable_context:
+            fp = self.applicable_context.get("failure_fingerprint")
+            if fp is not None:
+                object.__setattr__(self, "failure_fingerprint", str(fp))
+
+        # Fallback provenance_ref from applicable_context
+        if self.provenance_ref is None and "provenance_ref" in self.applicable_context:
+            pref = self.applicable_context.get("provenance_ref")
+            if pref is not None:
+                object.__setattr__(self, "provenance_ref", str(pref))
+
+        # Phase 15.5: Validate embedding metadata if present
+        if self.embedding is not None:
+            if not isinstance(self.embedding, tuple):
+                object.__setattr__(self, "embedding", tuple(float(x) for x in self.embedding))
+
+            if self.embedding_dimension is None or self.embedding_dimension <= 0:
+                raise ValueError(
+                    f"embedding_dimension must be a positive integer when embedding is present, "
+                    f"got {self.embedding_dimension}"
+                )
+
+            if len(self.embedding) != self.embedding_dimension:
+                raise ValueError(
+                    f"embedding length {len(self.embedding)} does not match declared "
+                    f"embedding_dimension {self.embedding_dimension}"
+                )
+
+            for i, val in enumerate(self.embedding):
+                if not isinstance(val, (int, float)):
+                    raise TypeError(f"embedding component at index {i} must be a float, got {type(val).__name__}")
+                if math.isnan(val):
+                    raise ValueError(f"embedding component at index {i} must not be NaN")
+                if math.isinf(val):
+                    raise ValueError(f"embedding component at index {i} must not be infinite")
+
+            if not self.embedding_model or not str(self.embedding_model).strip():
+                raise ValueError("embedding_model must not be empty when embedding is present")
+
+            if not self.embedding_version or not str(self.embedding_version).strip():
+                raise ValueError("embedding_version must not be empty when embedding is present")
+        elif self.embedding_dimension is not None:
+            raise ValueError("embedding_dimension specified without an embedding vector")
+
+    def to_embedding_result(self) -> EmbeddingResult | None:
+        """Construct an EmbeddingResult from this record's embedding fields if present."""
+        if (
+            self.embedding is None
+            or self.embedding_model is None
+            or self.embedding_dimension is None
+            or self.embedding_version is None
+        ):
+            return None
+        return EmbeddingResult(
+            vector=self.embedding,
+            model=self.embedding_model,
+            dimension=self.embedding_dimension,
+            version=self.embedding_version,
+        )
+
+    def with_embedding(self, embedding_result: EmbeddingResult) -> ExperienceRecord:
+        """Return a copy of this record with the specified embedding metadata attached."""
+        return ExperienceRecord(
+            experience_id=self.experience_id,
+            space_id=self.space_id,
+            situation=self.situation,
+            action=self.action,
+            outcome=self.outcome,
+            counterfactual=self.counterfactual,
+            applicable_context=self.applicable_context,
+            stored_at=self.stored_at,
+            embedding=embedding_result.vector,
+            embedding_model=embedding_result.model,
+            embedding_dimension=embedding_result.dimension,
+            embedding_version=embedding_result.version,
+            failure_fingerprint=self.failure_fingerprint,
+            provenance_ref=self.provenance_ref,
+        )
 
 
 @dataclass(frozen=True)
@@ -188,7 +276,9 @@ def verify_promotion_authorization(
 class SpaceMemoryProtocol(Protocol):
     """Protocol for Space-scoped memory operations (ADR-0033)."""
 
-    def store_experience(self, record: ExperienceRecord) -> str:
+    def store_experience(
+        self, record: ExperienceRecord, embedding: EmbeddingResult | None = None
+    ) -> str:
         """Store an experience record in Space-local memory. Returns experience_id."""
         ...
 
