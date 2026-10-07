@@ -176,7 +176,57 @@ class PlanStore:
                     elif op_type in ("reassign", "rollback"):
                         target_node = new_graph.get_node(target_id)
                         if target_node:
-                            target_node.params.update(op_payload.get("params", {}))
+                            # Reconcile payload parameters from both "params" and "payload"
+                            extracted_params: dict[str, Any] = {}
+                            if isinstance(op_payload.get("params"), dict):
+                                extracted_params.update(op_payload["params"])
+                            if isinstance(op_payload.get("payload"), dict):
+                                extracted_params.update(op_payload["payload"])
+                            if not extracted_params and any(
+                                k in op_payload
+                                for k in (
+                                    "reason",
+                                    "suggested_alternative",
+                                    "counterfactual_recommendation",
+                                    "replan_attempt",
+                                    "failure_fingerprint",
+                                )
+                            ):
+                                extracted_params = {
+                                    k: v
+                                    for k, v in op_payload.items()
+                                    if k not in ("op", "target_node_id")
+                                }
+
+                            target_node.params.update(extracted_params)
+                            if op_type == "reassign" and "capability" in extracted_params:
+                                target_node.capability = str(extracted_params["capability"])
+                            elif op_type == "rollback":
+                                if (
+                                    "suggested_alternative" in extracted_params
+                                    and extracted_params["suggested_alternative"]
+                                ):
+                                    target_node.params["suggested_alternative"] = str(
+                                        extracted_params["suggested_alternative"]
+                                    )
+
+                                # Rollback resets failed/timed_out/blocked/escalated node to eligible state (READY or PENDING)
+                                if target_node.state in ("failed", "timed_out", "blocked", "escalated"):
+                                    all_deps_satisfied = True
+                                    for dep_id in target_node.dependencies:
+                                        parent = new_graph.get_node(dep_id)
+                                        if parent is None or parent.state != "completed":
+                                            if (
+                                                parent is not None
+                                                and parent.optional
+                                                and parent.state in ("failed", "cancelled")
+                                            ):
+                                                continue
+                                            all_deps_satisfied = False
+                                            break
+                                    target_state = "ready" if all_deps_satisfied else "pending"
+                                    target_node.transition_to(target_state, reason="Plan rollback reset")
+                                    target_node.error = None
                     elif op_type == "transition":
                         target_node = new_graph.get_node(target_id)
                         if target_node is None:

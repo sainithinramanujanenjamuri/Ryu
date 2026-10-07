@@ -154,14 +154,28 @@ class InMemoryMemoryAdapter(SpaceMemoryProtocol):
             records = list(self._experiences.get(space_id, {}).values())
 
         if before_stored_at is not None:
-            records = [r for r in records if r.stored_at < before_stored_at]
+            records = [
+                r
+                for r in records
+                if (
+                    r.stored_at
+                    if isinstance(r.stored_at, datetime)
+                    else datetime.fromtimestamp(float(r.stored_at), tz=timezone.utc)
+                )
+                < before_stored_at
+            ]
 
         def _sort_key(r: ExperienceRecord) -> tuple[float, str]:
-            ts = (
-                r.stored_at.timestamp()
-                if r.stored_at.tzinfo is not None
-                else r.stored_at.replace(tzinfo=timezone.utc).timestamp()
-            )
+            if isinstance(r.stored_at, (int, float)):
+                ts = float(r.stored_at)
+            elif isinstance(r.stored_at, datetime):
+                ts = (
+                    r.stored_at.timestamp()
+                    if r.stored_at.tzinfo is not None
+                    else r.stored_at.replace(tzinfo=timezone.utc).timestamp()
+                )
+            else:
+                ts = 0.0
             return (-ts, r.experience_id)
 
         records.sort(key=_sort_key)

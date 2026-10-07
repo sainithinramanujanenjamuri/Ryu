@@ -80,11 +80,11 @@ LEGAL_TRANSITIONS: dict[str, frozenset[str]] = {
     "evaluating": frozenset({"completed", "failed", "escalated"}),
     "retry_pending": frozenset({"ready", "admission_pending", "escalated", "cancelled"}),
     "blocked": frozenset({"ready", "admission_pending", "failed", "cancelled", "escalated"}),
-    "failed": frozenset({"retry_pending", "escalated"}),
-    "timed_out": frozenset({"retry_pending", "failed", "escalated"}),
+    "failed": frozenset({"retry_pending", "escalated", "ready", "pending"}),
+    "timed_out": frozenset({"retry_pending", "failed", "escalated", "ready", "pending"}),
     "completed": frozenset(),
     "cancelled": frozenset(),
-    "escalated": frozenset({"retry_pending", "cancelled"}),
+    "escalated": frozenset({"retry_pending", "cancelled", "ready", "pending"}),
 }
 
 

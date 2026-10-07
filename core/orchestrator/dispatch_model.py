@@ -2877,6 +2877,9 @@ class ConvergenceEngine:
         self._seen_fingerprints: set[str] = set()
         # Chronological repair failure fingerprint sequences for loop/oscillation detection (REPAIR-002)
         self._repair_fingerprints: dict[str, list[str]] = {}
+        # Chronological strategy/capability sequence history for oscillation detection (Phase 15.6.1, CONV-OSC-001)
+        self.MAX_STRATEGY_HISTORY = 10
+        self._strategy_history: dict[str, list[str]] = {}
 
     # ── Durable state helpers (RECOVERY-002, RECOVERY-003, REPAIR-001..003) ──
 
@@ -2990,6 +2993,61 @@ class ConvergenceEngine:
     def _has_fingerprint(self, fingerprint: str) -> bool:
         """Check if fingerprint was seen (in-memory; preloaded from store at first access)."""
         return fingerprint in self._seen_fingerprints
+
+    # ── Strategy Sequence Tracking & Oscillation Detection (CONV-OSC-001, ADR-0050) ──
+
+    def record_strategy(self, replan_key: str, strategy: str) -> None:
+        """Record a strategy or capability attempt in chronological history, bounded to MAX_STRATEGY_HISTORY (CONV-OSC-001)."""
+        if not strategy:
+            return
+        history = self._strategy_history.setdefault(replan_key, [])
+        history.append(strategy)
+        if len(history) > self.MAX_STRATEGY_HISTORY:
+            self._strategy_history[replan_key] = history[-self.MAX_STRATEGY_HISTORY:]
+
+    def get_strategy_history(self, replan_key: str) -> list[str]:
+        """Return a copy of the chronological strategy history for the replan key (CONV-OSC-001)."""
+        return list(self._strategy_history.get(replan_key, []))
+
+    def clear_strategy_history(self, replan_key: str) -> None:
+        """Clear strategy history for the given key (CONV-OSC-001)."""
+        self._strategy_history.pop(replan_key, None)
+
+    def detect_strategy_oscillation(self, replan_key: str) -> tuple[bool, str]:
+        """Detect deterministic strategy/capability oscillation in history (CONV-OSC-001).
+
+        Deterministic sequence patterns evaluated over bounded history (N <= 10):
+        1. Stagnant repeating loop (A -> A -> A)
+        2. Direct strategy reversal (A -> B -> A where A != B)
+        3. Alternating 2-cycle (A -> B -> A -> B where A != B)
+        4. Period-3 cycle (A -> B -> C -> A -> B -> C)
+
+        Returns:
+            (is_oscillating: bool, reason: str)
+        """
+        history = self._strategy_history.get(replan_key, [])
+        n = len(history)
+        if n < 3:
+            return False, ""
+
+        # Check 1: Stagnant repeating loop (A -> A -> A)
+        if n >= 3 and history[-1] == history[-2] == history[-3]:
+            return True, f"Stagnant strategy loop detected: '{history[-1]}' repeated 3 times consecutively"
+
+        # Check 2: Direct reversal (A -> B -> A where A != B)
+        if n >= 3 and history[-1] == history[-3] and history[-1] != history[-2]:
+            return True, f"Direct strategy reversal detected: {history[-3]} -> {history[-2]} -> {history[-1]}"
+
+        # Check 3: Alternating 2-cycle (A -> B -> A -> B where A != B)
+        if n >= 4 and history[-4] == history[-2] and history[-3] == history[-1] and history[-4] != history[-3]:
+            return True, f"Alternating 2-cycle strategy oscillation detected: {history[-4]} -> {history[-3]} -> {history[-2]} -> {history[-1]}"
+
+        # Check 4: Period-3 cycle (A -> B -> C -> A -> B -> C)
+        if n >= 6 and history[-6:-3] == history[-3:] and len(set(history[-3:])) > 1:
+            pattern = " -> ".join(history[-3:])
+            return True, f"Period-3 cycle strategy oscillation detected: {pattern} -> {pattern}"
+
+        return False, ""
 
     def evaluate_and_propose(
         self,
@@ -3555,6 +3613,41 @@ class ConvergenceEngine:
             except Exception:
                 pass  # Advisory layer failure must never block convergence
 
+        # Phase 15.6.1: Deterministic strategy sequence tracking & oscillation detection (CONV-OSC-001)
+        current_strategy = ""
+        if task_id:
+            try:
+                cur_node = kernel.get_task_graph().get_node(task_id)
+                if cur_node is not None:
+                    current_strategy = cur_node.capability
+            except Exception:
+                pass
+
+        # If history is empty and current_strategy is known, record the baseline strategy
+        if current_strategy and not self.get_strategy_history(replan_key):
+            self.record_strategy(replan_key, current_strategy)
+
+        strategy_proposed = suggested_alt_cap or current_strategy or reason
+        if strategy_proposed:
+            self.record_strategy(replan_key, strategy_proposed)
+
+        is_oscillating, osc_reason = self.detect_strategy_oscillation(replan_key)
+        if is_oscillating:
+            return ConvergenceProposal(
+                decision=ConvergenceDecision.ESCALATE,
+                space_id=self.space_id,
+                plan_version=plan_version,
+                task_id=task_id,
+                reasoning=(
+                    f"Strategy oscillation detected for '{replan_key}': {osc_reason}. "
+                    f"Escalating to human operator."
+                ),
+                escalation_reason=f"Strategy oscillation: {osc_reason}",
+                replan_attempt=current_replans,
+                failure_fingerprint=fingerprint,
+                evaluation=eval_result,
+            )
+
         # Build PlanDelta for REPLAN — uses "rollback" op (legal in ALLOWED_OPS).
         # "rollback" is the correct structural recovery op for replanning.
         # The Dispatcher does NOT commit this; the caller must pass it to SpaceKernel.
@@ -3577,6 +3670,7 @@ class ConvergenceEngine:
                     "op": "rollback",
                     "target_node_id": task_id,
                     "payload": payload_data,
+                    "params": payload_data,
                 }
             )
         else:
@@ -3588,6 +3682,7 @@ class ConvergenceEngine:
                     "op": "rollback",
                     "target_node_id": "__plan__",
                     "payload": payload_data,
+                    "params": payload_data,
                 }
             )
 
@@ -3694,13 +3789,14 @@ class ConvergenceEngine:
         return True
 
     def reset_task_budgets(self, task_id: str) -> None:
-        """Reset retry/replan budgets for a task after a successful replan (Phase 12.6).
+        """Reset retry/replan budgets and strategy history for a task after a successful replan (Phase 12.6, Phase 15.6.1).
 
         Called by the orchestration loop when a REPLAN is accepted and the task
         is given a fresh identity in the new plan version.
         """
         self._retry_counts.pop(task_id, None)
         self._replan_counts.pop(task_id, None)
+        self._strategy_history.pop(task_id, None)
 
     def reset_repair_budget(self, task_id: str) -> None:
         """Reset repair iteration and fingerprint history for a task (Phase 14.6)."""
