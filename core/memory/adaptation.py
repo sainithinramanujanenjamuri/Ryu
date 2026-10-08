@@ -10,6 +10,7 @@ spec §7 (Adaptation Layer), ROADMAP Phase 10 & 15.5, MEM-004, MEM-SEM-004, MEM-
 from __future__ import annotations
 
 import concurrent.futures
+import threading
 from typing import Any
 
 from core.space.memory_protocol import (
@@ -48,11 +49,55 @@ class AdaptationLayer(AdaptationLayerProtocol):
         memory_store: SpaceMemoryProtocol,
         embedding_provider: EmbeddingProviderProtocol | None = None,
         timeout_seconds: float = 0.5,
+        executor: concurrent.futures.ThreadPoolExecutor | None = None,
+        max_workers: int = 2,
     ) -> None:
         self.memory_store = memory_store
         self.embedding_provider = embedding_provider
         self.timeout_seconds = timeout_seconds
+        self.max_workers = max(1, min(max_workers, 8))
+        self._external_executor = executor is not None
+        self._executor: concurrent.futures.ThreadPoolExecutor | None = executor
+        self._lock = threading.Lock()
+        self._closed = False
         self._last_retrieval_status: dict[str, Any] = {}
+
+    def _get_executor(self) -> concurrent.futures.ThreadPoolExecutor:
+        """Return the managed thread pool executor, lazily initializing if needed (F05-AUDIT-02, MEM-SEM-004)."""
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("AdaptationLayer executor has been closed")
+            if self._executor is None:
+                self._executor = concurrent.futures.ThreadPoolExecutor(
+                    max_workers=self.max_workers,
+                    thread_name_prefix="adaptation-retrieval",
+                )
+            return self._executor
+
+    def close(self, wait: bool = False, cancel_futures: bool = True) -> None:
+        """Release managed executor resources without blocking on hanging worker threads (F05-AUDIT-02, MEM-SEM-004)."""
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            if self._executor is not None and not self._external_executor:
+                try:
+                    self._executor.shutdown(wait=wait, cancel_futures=cancel_futures)
+                except TypeError:
+                    self._executor.shutdown(wait=wait)
+                self._executor = None
+
+    def __enter__(self) -> AdaptationLayer:
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close(wait=False, cancel_futures=True)
+
+    def __del__(self) -> None:
+        try:
+            self.close(wait=False, cancel_futures=True)
+        except Exception:
+            pass
 
     def get_last_retrieval_status(self) -> dict[str, Any]:
         """Return observability metadata from the most recent hint generation call (MEM-SEM-004)."""
@@ -127,13 +172,17 @@ class AdaptationLayer(AdaptationLayerProtocol):
                 )
 
                 if self.timeout_seconds and self.timeout_seconds > 0:
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                        future = executor.submit(
-                            self.memory_store.retrieve_semantic_experiences,
-                            sem_query,
-                            self.embedding_provider,
-                        )
+                    executor = self._get_executor()
+                    future = executor.submit(
+                        self.memory_store.retrieve_semantic_experiences,
+                        sem_query,
+                        self.embedding_provider,
+                    )
+                    try:
                         scored_experiences = future.result(timeout=self.timeout_seconds)
+                    except (concurrent.futures.TimeoutError, TimeoutError) as t_err:
+                        future.cancel()
+                        semantic_error = f"timeout_exceeded: {t_err}"
                 else:
                     scored_experiences = self.memory_store.retrieve_semantic_experiences(
                         sem_query, embedding_provider=self.embedding_provider
