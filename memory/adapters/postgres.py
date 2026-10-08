@@ -184,53 +184,109 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
         if embedding is not None:
             effective_record = record.with_embedding(embedding)
         else:
-            effective_record = record
+            if record.embedding is None and record.embedding_status == "completed":
+                effective_record = record.with_embedding_status("pending")
+            else:
+                effective_record = record
 
-        sql = """
-            INSERT INTO space_experiences (
-                experience_id, space_id, situation, action, outcome,
-                counterfactual, applicable_context, stored_at,
-                embedding, embedding_model, embedding_dimension,
-                embedding_version, failure_fingerprint, provenance_ref
-            ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s
-            )
-            ON CONFLICT (experience_id, space_id) DO UPDATE SET
-                situation = EXCLUDED.situation,
-                action = EXCLUDED.action,
-                outcome = EXCLUDED.outcome,
-                counterfactual = EXCLUDED.counterfactual,
-                applicable_context = EXCLUDED.applicable_context,
-                stored_at = EXCLUDED.stored_at,
-                embedding = EXCLUDED.embedding,
-                embedding_model = EXCLUDED.embedding_model,
-                embedding_dimension = EXCLUDED.embedding_dimension,
-                embedding_version = EXCLUDED.embedding_version,
-                failure_fingerprint = EXCLUDED.failure_fingerprint,
-                provenance_ref = EXCLUDED.provenance_ref;
-        """
         embedding_val = (
             Json(list(effective_record.embedding))
             if effective_record.embedding is not None and Json is not None
             else (json.dumps(list(effective_record.embedding)) if effective_record.embedding is not None else None)
         )
-        params = (
-            effective_record.experience_id,
-            effective_record.space_id,
-            Json(effective_record.situation) if Json is not None else json.dumps(effective_record.situation),
-            Json(effective_record.action) if Json is not None else json.dumps(effective_record.action),
-            effective_record.outcome,
-            effective_record.counterfactual,
-            Json(effective_record.applicable_context) if Json is not None else json.dumps(effective_record.applicable_context),
-            effective_record.stored_at,
-            embedding_val,
-            effective_record.embedding_model,
-            effective_record.embedding_dimension,
-            effective_record.embedding_version,
-            effective_record.failure_fingerprint,
-            effective_record.provenance_ref,
-        )
+
+        if effective_record.embedding is not None:
+            # Phase 15.5 compatible 14-parameter insertion for records with pre-computed embeddings
+            sql = """
+                INSERT INTO space_experiences (
+                    experience_id, space_id, situation, action, outcome,
+                    counterfactual, applicable_context, stored_at,
+                    embedding, embedding_model, embedding_dimension,
+                    embedding_version, failure_fingerprint, provenance_ref
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s
+                )
+                ON CONFLICT (experience_id, space_id) DO UPDATE SET
+                    situation = EXCLUDED.situation,
+                    action = EXCLUDED.action,
+                    outcome = EXCLUDED.outcome,
+                    counterfactual = EXCLUDED.counterfactual,
+                    applicable_context = EXCLUDED.applicable_context,
+                    stored_at = EXCLUDED.stored_at,
+                    embedding = EXCLUDED.embedding,
+                    embedding_model = EXCLUDED.embedding_model,
+                    embedding_dimension = EXCLUDED.embedding_dimension,
+                    embedding_version = EXCLUDED.embedding_version,
+                    failure_fingerprint = EXCLUDED.failure_fingerprint,
+                    provenance_ref = EXCLUDED.provenance_ref;
+            """
+            params: tuple[Any, ...] = (
+                effective_record.experience_id,
+                effective_record.space_id,
+                Json(effective_record.situation) if Json is not None else json.dumps(effective_record.situation),
+                Json(effective_record.action) if Json is not None else json.dumps(effective_record.action),
+                effective_record.outcome,
+                effective_record.counterfactual,
+                Json(effective_record.applicable_context) if Json is not None else json.dumps(effective_record.applicable_context),
+                effective_record.stored_at,
+                embedding_val,
+                effective_record.embedding_model,
+                effective_record.embedding_dimension,
+                effective_record.embedding_version,
+                effective_record.failure_fingerprint,
+                effective_record.provenance_ref,
+            )
+        else:
+            # Phase 15.6.5 outbox tracking 17-parameter insertion for pending embedding generation
+            sql = """
+                INSERT INTO space_experiences (
+                    experience_id, space_id, situation, action, outcome,
+                    counterfactual, applicable_context, stored_at,
+                    embedding, embedding_model, embedding_dimension,
+                    embedding_version, failure_fingerprint, provenance_ref,
+                    embedding_status, embedding_attempts, embedding_error
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s
+                )
+                ON CONFLICT (experience_id, space_id) DO UPDATE SET
+                    situation = EXCLUDED.situation,
+                    action = EXCLUDED.action,
+                    outcome = EXCLUDED.outcome,
+                    counterfactual = EXCLUDED.counterfactual,
+                    applicable_context = EXCLUDED.applicable_context,
+                    stored_at = EXCLUDED.stored_at,
+                    embedding = EXCLUDED.embedding,
+                    embedding_model = EXCLUDED.embedding_model,
+                    embedding_dimension = EXCLUDED.embedding_dimension,
+                    embedding_version = EXCLUDED.embedding_version,
+                    failure_fingerprint = EXCLUDED.failure_fingerprint,
+                    provenance_ref = EXCLUDED.provenance_ref,
+                    embedding_status = EXCLUDED.embedding_status,
+                    embedding_attempts = EXCLUDED.embedding_attempts,
+                    embedding_error = EXCLUDED.embedding_error;
+            """
+            params = (
+                effective_record.experience_id,
+                effective_record.space_id,
+                Json(effective_record.situation) if Json is not None else json.dumps(effective_record.situation),
+                Json(effective_record.action) if Json is not None else json.dumps(effective_record.action),
+                effective_record.outcome,
+                effective_record.counterfactual,
+                Json(effective_record.applicable_context) if Json is not None else json.dumps(effective_record.applicable_context),
+                effective_record.stored_at,
+                embedding_val,
+                effective_record.embedding_model,
+                effective_record.embedding_dimension,
+                effective_record.embedding_version,
+                effective_record.failure_fingerprint,
+                effective_record.provenance_ref,
+                effective_record.embedding_status,
+                effective_record.embedding_attempts,
+                effective_record.embedding_error,
+            )
         try:
             with self._get_conn() as conn:
                 with conn.cursor() as cur:
@@ -564,6 +620,127 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
                 operation="query_similar_experiences", reason=str(e)
             ) from e
 
+    def get_pending_embeddings(
+        self, space_id: str, limit: int = 16
+    ) -> list[ExperienceRecord]:
+        """Retrieve records pending embedding generation in space_id (MEM-INGEST-001)."""
+        if not space_id or not space_id.strip():
+            raise SpaceIsolationViolation(
+                requesting_space=space_id or "<empty>", target_space=space_id or "<empty>"
+            )
+
+        clamped_limit = max(1, min(limit, 50))
+        sql = """
+            SELECT experience_id, space_id, situation, action, outcome,
+                   counterfactual, applicable_context, stored_at,
+                   embedding, embedding_model, embedding_dimension,
+                   embedding_version, failure_fingerprint, provenance_ref,
+                   embedding_status, embedding_attempts, embedding_error
+            FROM space_experiences
+            WHERE space_id = %s
+              AND embedding_status IN ('pending', 'processing')
+              AND embedding_attempts < 3
+              AND embedding IS NULL
+            ORDER BY stored_at ASC
+            LIMIT %s;
+        """
+        try:
+            with self._get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql, (space_id, clamped_limit))
+                    rows = cur.fetchall()
+                    return [self._row_to_experience(row) for row in rows]
+        except Exception as e:
+            if isinstance(e, SpaceIsolationViolation):
+                raise
+            raise MemoryFailure(operation="get_pending_embeddings", reason=str(e)) from e
+
+    def update_experience_embedding(
+        self, space_id: str, experience_id: str, embedding: EmbeddingResult
+    ) -> None:
+        """Atomically update an experience record with its generated embedding (MEM-INGEST-001)."""
+        if not space_id or not space_id.strip():
+            raise SpaceIsolationViolation(
+                requesting_space=space_id or "<empty>", target_space=space_id or "<empty>"
+            )
+
+        embedding_val = (
+            Json(list(embedding.vector))
+            if Json is not None
+            else json.dumps(list(embedding.vector))
+        )
+        sql = """
+            UPDATE space_experiences
+            SET embedding = %s,
+                embedding_model = %s,
+                embedding_dimension = %s,
+                embedding_version = %s,
+                embedding_status = 'completed',
+                embedding_error = NULL,
+                embedding_updated_at = NOW()
+            WHERE space_id = %s AND experience_id = %s;
+        """
+        try:
+            with self._get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        sql,
+                        (
+                            embedding_val,
+                            embedding.model,
+                            embedding.dimension,
+                            embedding.version,
+                            space_id,
+                            experience_id,
+                        ),
+                    )
+                    if cur.rowcount == 0:
+                        raise MemoryFailure(
+                            operation="update_experience_embedding",
+                            reason=f"Experience '{experience_id}' not found in space '{space_id}'",
+                        )
+        except Exception as e:
+            if isinstance(e, (SpaceIsolationViolation, MemoryFailure)):
+                raise
+            raise MemoryFailure(operation="update_experience_embedding", reason=str(e)) from e
+
+    def mark_embedding_failed(
+        self,
+        space_id: str,
+        experience_id: str,
+        error: str,
+        attempts: int,
+        terminal: bool = False,
+    ) -> None:
+        """Record embedding generation failure or increment attempt count (MEM-INGEST-001)."""
+        if not space_id or not space_id.strip():
+            raise SpaceIsolationViolation(
+                requesting_space=space_id or "<empty>", target_space=space_id or "<empty>"
+            )
+
+        status = "failed" if terminal else "pending"
+        sql = """
+            UPDATE space_experiences
+            SET embedding_status = %s,
+                embedding_attempts = %s,
+                embedding_error = %s,
+                embedding_updated_at = NOW()
+            WHERE space_id = %s AND experience_id = %s;
+        """
+        try:
+            with self._get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql, (status, attempts, error, space_id, experience_id))
+                    if cur.rowcount == 0:
+                        raise MemoryFailure(
+                            operation="mark_embedding_failed",
+                            reason=f"Experience '{experience_id}' not found in space '{space_id}'",
+                        )
+        except Exception as e:
+            if isinstance(e, (SpaceIsolationViolation, MemoryFailure)):
+                raise
+            raise MemoryFailure(operation="mark_embedding_failed", reason=str(e)) from e
+
     def store_knowledge(
         self, entry: KnowledgeEntry, auth: PromotionAuthorization
     ) -> None:
@@ -702,6 +879,19 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
         if len(row) > 13 and row[13] is not None:
             prov_ref = str(row[13])
 
+        emb_status = "completed"
+        emb_attempts = 0
+        emb_error: str | None = None
+        if len(row) > 14 and row[14] is not None:
+            emb_status = str(row[14])
+        elif embedding is None:
+            emb_status = "pending"
+
+        if len(row) > 15 and row[15] is not None:
+            emb_attempts = int(row[15])
+        if len(row) > 16 and row[16] is not None:
+            emb_error = str(row[16])
+
         return ExperienceRecord(
             experience_id=row[0],
             space_id=row[1],
@@ -719,6 +909,9 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
             embedding_version=embedding_ver,
             failure_fingerprint=failure_fp,
             provenance_ref=prov_ref,
+            embedding_status=emb_status,
+            embedding_attempts=emb_attempts,
+            embedding_error=emb_error,
         )
 
     def _row_to_knowledge(self, row: tuple) -> KnowledgeEntry:  # type: ignore[type-arg]

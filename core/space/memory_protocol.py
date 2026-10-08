@@ -77,6 +77,10 @@ class ExperienceRecord:
     embedding_version: str | None = None
     failure_fingerprint: str | None = None
     provenance_ref: str | None = None
+    # Phase 15.6.5 Durable outbox lifecycle status (F05-AUDIT-01, MEM-INGEST-001)
+    embedding_status: str = "completed"
+    embedding_attempts: int = 0
+    embedding_error: str | None = None
 
     def __post_init__(self) -> None:
         if not self.experience_id or not self.experience_id.strip():
@@ -87,6 +91,16 @@ class ExperienceRecord:
             raise ValueError(
                 "counterfactual must not be empty: an ExperienceRecord without a counterfactual "
                 "cannot be evaluated for behavioral adaptation (MEM-002, ADR-0034)"
+            )
+
+        if self.embedding_status not in ("pending", "processing", "completed", "failed"):
+            raise ValueError(
+                f"embedding_status must be one of ('pending', 'processing', 'completed', 'failed'), "
+                f"got '{self.embedding_status}'"
+            )
+        if self.embedding_attempts < 0:
+            raise ValueError(
+                f"embedding_attempts must be non-negative, got {self.embedding_attempts}"
             )
 
         # Fallback failure_fingerprint from applicable_context
@@ -167,6 +181,36 @@ class ExperienceRecord:
             embedding_version=embedding_result.version,
             failure_fingerprint=self.failure_fingerprint,
             provenance_ref=self.provenance_ref,
+            embedding_status="completed",
+            embedding_attempts=self.embedding_attempts,
+            embedding_error=None,
+        )
+
+    def with_embedding_status(
+        self,
+        status: str,
+        attempts: int | None = None,
+        error: str | None = None,
+    ) -> ExperienceRecord:
+        """Return a copy of this record with updated embedding status."""
+        return ExperienceRecord(
+            experience_id=self.experience_id,
+            space_id=self.space_id,
+            situation=self.situation,
+            action=self.action,
+            outcome=self.outcome,
+            counterfactual=self.counterfactual,
+            applicable_context=self.applicable_context,
+            stored_at=self.stored_at,
+            embedding=self.embedding,
+            embedding_model=self.embedding_model,
+            embedding_dimension=self.embedding_dimension,
+            embedding_version=self.embedding_version,
+            failure_fingerprint=self.failure_fingerprint,
+            provenance_ref=self.provenance_ref,
+            embedding_status=status,
+            embedding_attempts=attempts if attempts is not None else self.embedding_attempts,
+            embedding_error=error,
         )
 
 
@@ -598,6 +642,29 @@ class SpaceMemoryProtocol(Protocol):
         self, space_id: str, policy: RetentionPolicy | None = None
     ) -> CompactionResult:
         """Prune experiences in space_id according to retention policy (MEM-RETAIN-001)."""
+        ...
+
+    def get_pending_embeddings(
+        self, space_id: str, limit: int = 16
+    ) -> list[ExperienceRecord]:
+        """Retrieve records pending embedding generation strictly in space_id (MEM-INGEST-001)."""
+        ...
+
+    def update_experience_embedding(
+        self, space_id: str, experience_id: str, embedding: EmbeddingResult
+    ) -> None:
+        """Atomically update an experience record with its generated embedding (MEM-INGEST-001)."""
+        ...
+
+    def mark_embedding_failed(
+        self,
+        space_id: str,
+        experience_id: str,
+        error: str,
+        attempts: int,
+        terminal: bool = False,
+    ) -> None:
+        """Record embedding generation failure or increment attempt count (MEM-INGEST-001)."""
         ...
 
     def store_knowledge(

@@ -69,6 +69,26 @@ class Neo4jAdapterStub(SpaceMemoryProtocol):
     ) -> CompactionResult:
         raise NotImplementedError("Neo4jAdapter: spec §4 (Knowledge Graph) — Phase 11+")
 
+    def get_pending_embeddings(
+        self, space_id: str, limit: int = 16
+    ) -> list[ExperienceRecord]:
+        raise NotImplementedError("Neo4jAdapter: spec §4 (Knowledge Graph) — Phase 11+")
+
+    def update_experience_embedding(
+        self, space_id: str, experience_id: str, embedding: EmbeddingResult
+    ) -> None:
+        raise NotImplementedError("Neo4jAdapter: spec §4 (Knowledge Graph) — Phase 11+")
+
+    def mark_embedding_failed(
+        self,
+        space_id: str,
+        experience_id: str,
+        error: str,
+        attempts: int,
+        terminal: bool = False,
+    ) -> None:
+        raise NotImplementedError("Neo4jAdapter: spec §4 (Knowledge Graph) — Phase 11+")
+
     def store_knowledge(
         self, entry: KnowledgeEntry, auth: PromotionAuthorization
     ) -> None:

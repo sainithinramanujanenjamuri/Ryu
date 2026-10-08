@@ -17,6 +17,10 @@ from memory.evaluation import (
     FrozenTrace,
     FrozenTraceCorpus,
 )
+from memory.ingestion import (
+    EmbeddingIngestionPipeline,
+    IngestionBatchResult,
+)
 from memory.promotion import (
     PromotionError,
     PromotionPipeline,
@@ -31,6 +35,8 @@ __all__ = [
     "Neo4jAdapterStub",
     "Reflector",
     "DeterministicMockEmbeddingProvider",
+    "EmbeddingIngestionPipeline",
+    "IngestionBatchResult",
     "EvaluationModule",
     "EvaluationResult",
     "FrozenTrace",

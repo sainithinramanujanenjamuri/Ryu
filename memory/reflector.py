@@ -14,14 +14,20 @@ spec §4 (Space Memory, Adapter/Reflector), §16 (experience.stored), MEM-002, M
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from ryu.pulse_bus.pulse import Pulse, Severity
 
 from core.orchestrator.adapter import Adapter
 from core.space.memory_protocol import ExperienceRecord, SpaceMemoryProtocol
+
+if TYPE_CHECKING:
+    from memory.ingestion.pipeline import EmbeddingIngestionPipeline
+
+logger = logging.getLogger(__name__)
 
 
 class PulsePublisher(Protocol):
@@ -36,10 +42,14 @@ class Reflector:
         adapter: Adapter,
         memory_store: SpaceMemoryProtocol,
         bus: PulsePublisher | None = None,
+        ingestion_pipeline: EmbeddingIngestionPipeline | None = None,
+        auto_embed: bool = False,
     ) -> None:
         self.adapter = adapter
         self.memory_store = memory_store
         self.bus = bus
+        self.ingestion_pipeline = ingestion_pipeline
+        self.auto_embed = auto_embed
 
     def reflect(
         self,
@@ -71,6 +81,7 @@ class Reflector:
             counterfactual=counterfactual,
             applicable_context=applicable_context or {},
             stored_at=now,
+            embedding_status="pending",
         )
 
         # Step 2: Persist to memory store BEFORE pulse emission (MemoryFailure propagates if store fails)
@@ -107,6 +118,21 @@ class Reflector:
                     timestamp=now,
                 )
             )
+
+        # Step 5: Opportunistic asynchronous embedding ingestion (MEM-INGEST-001)
+        if self.auto_embed and self.ingestion_pipeline is not None:
+            try:
+                self.ingestion_pipeline.process_space_outbox(eff_space_id, batch_size=1)
+                enriched = self.memory_store.get_experience(eff_space_id, exp_id)
+                if enriched is not None:
+                    return enriched
+            except Exception as e:
+                logger.warning(
+                    "Opportunistic embedding failed for experience '%s' in space '%s': %s",
+                    exp_id,
+                    eff_space_id,
+                    e,
+                )
 
         return record
 

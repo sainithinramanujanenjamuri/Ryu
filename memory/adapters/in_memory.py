@@ -19,6 +19,7 @@ from core.space.memory_protocol import (
     ExperienceQuery,
     ExperienceRecord,
     KnowledgeEntry,
+    MemoryFailure,
     PromotionAuthorization,
     RetentionPolicy,
     ScoredExperienceRecord,
@@ -95,7 +96,10 @@ class InMemoryMemoryAdapter(SpaceMemoryProtocol):
         if embedding is not None:
             effective_record = record.with_embedding(embedding)
         else:
-            effective_record = record
+            if record.embedding is None and record.embedding_status == "completed":
+                effective_record = record.with_embedding_status("pending")
+            else:
+                effective_record = record
 
         with self._lock:
             space_map = self._experiences.setdefault(effective_record.space_id, {})
@@ -391,6 +395,74 @@ class InMemoryMemoryAdapter(SpaceMemoryProtocol):
         # Sort by relevance descending, tie-break by stored_at
         scored.sort(key=lambda item: (item[0], item[1].stored_at), reverse=True)
         return [item[1] for item in scored[: query.limit]]
+
+    def get_pending_embeddings(
+        self, space_id: str, limit: int = 16
+    ) -> list[ExperienceRecord]:
+        """Retrieve records pending embedding generation in space_id (MEM-INGEST-001)."""
+        if not space_id or not space_id.strip():
+            raise SpaceIsolationViolation(
+                requesting_space=space_id or "<empty>", target_space=space_id or "<empty>"
+            )
+
+        clamped_limit = max(1, min(limit, 50))
+        with self._lock:
+            space_map = self._experiences.get(space_id, {})
+            pending = [
+                rec
+                for rec in space_map.values()
+                if rec.embedding_status in ("pending", "processing")
+                and rec.embedding_attempts < 3
+                and rec.embedding is None
+            ]
+            pending.sort(key=lambda r: (r.stored_at, r.experience_id))
+            return pending[:clamped_limit]
+
+    def update_experience_embedding(
+        self, space_id: str, experience_id: str, embedding: EmbeddingResult
+    ) -> None:
+        """Atomically update an experience record with its generated embedding (MEM-INGEST-001)."""
+        if not space_id or not space_id.strip():
+            raise SpaceIsolationViolation(
+                requesting_space=space_id or "<empty>", target_space=space_id or "<empty>"
+            )
+
+        with self._lock:
+            space_map = self._experiences.get(space_id)
+            if not space_map or experience_id not in space_map:
+                raise MemoryFailure(
+                    operation="update_experience_embedding",
+                    reason=f"Experience '{experience_id}' not found in space '{space_id}'",
+                )
+            rec = space_map[experience_id]
+            updated = rec.with_embedding(embedding)
+            space_map[experience_id] = updated
+
+    def mark_embedding_failed(
+        self,
+        space_id: str,
+        experience_id: str,
+        error: str,
+        attempts: int,
+        terminal: bool = False,
+    ) -> None:
+        """Record embedding generation failure or increment attempt count (MEM-INGEST-001)."""
+        if not space_id or not space_id.strip():
+            raise SpaceIsolationViolation(
+                requesting_space=space_id or "<empty>", target_space=space_id or "<empty>"
+            )
+
+        with self._lock:
+            space_map = self._experiences.get(space_id)
+            if not space_map or experience_id not in space_map:
+                raise MemoryFailure(
+                    operation="mark_embedding_failed",
+                    reason=f"Experience '{experience_id}' not found in space '{space_id}'",
+                )
+            rec = space_map[experience_id]
+            status = "failed" if terminal else "pending"
+            updated = rec.with_embedding_status(status, attempts=attempts, error=error)
+            space_map[experience_id] = updated
 
     def store_knowledge(
         self, entry: KnowledgeEntry, auth: PromotionAuthorization
