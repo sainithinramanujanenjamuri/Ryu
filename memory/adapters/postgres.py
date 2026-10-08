@@ -23,6 +23,7 @@ except ImportError:  # pragma: no cover
 from ryu.pulse_bus.config import PostgresConfig
 
 from core.space.memory_protocol import (
+    CompactionResult,
     EmbeddingProviderProtocol,
     EmbeddingResult,
     ExperienceQuery,
@@ -30,10 +31,12 @@ from core.space.memory_protocol import (
     KnowledgeEntry,
     MemoryFailure,
     PromotionAuthorization,
+    RetentionPolicy,
     ScoredExperienceRecord,
     SemanticExperienceQuery,
     SpaceIsolationViolation,
     SpaceMemoryProtocol,
+    select_compaction_victims,
     verify_promotion_authorization,
 )
 from memory.retrieval.ranker import (
@@ -50,6 +53,8 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
         config: PostgresConfig,
         signing_key: bytes | None = None,
         key_resolver: Callable[[str], bytes] | None = None,
+        default_retention_policy: RetentionPolicy | None = None,
+        auto_prune: bool = False,
     ) -> None:
         if psycopg2 is None:
             raise MemoryFailure(
@@ -59,6 +64,8 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
         self.config = config
         self._signing_key = signing_key
         self._key_resolver = key_resolver
+        self._default_retention_policy = default_retention_policy
+        self._auto_prune = auto_prune
 
     def _get_signing_key(self, space_id: str) -> bytes:
         if self._key_resolver is not None:
@@ -144,8 +151,12 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
             with self._get_conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(sql, params)
+            if self._auto_prune and self._default_retention_policy:
+                self.prune_experiences(effective_record.space_id, self._default_retention_policy)
             return effective_record.experience_id
         except Exception as e:
+            if isinstance(e, (SpaceIsolationViolation, MemoryFailure)):
+                raise
             raise MemoryFailure(operation="store_experience", reason=str(e)) from e
 
     def get_experience(
@@ -219,6 +230,81 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
             if isinstance(e, SpaceIsolationViolation):
                 raise
             raise MemoryFailure(operation="list_experiences", reason=str(e)) from e
+
+    def count_experiences(self, space_id: str) -> int:
+        """Count experiences stored strictly within space_id (MEM-RETAIN-001)."""
+        if not space_id or not space_id.strip():
+            raise SpaceIsolationViolation(
+                requesting_space=space_id or "<empty>", target_space=space_id or "<empty>"
+            )
+        sql = "SELECT COUNT(*) FROM space_experiences WHERE space_id = %s;"
+        try:
+            with self._get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql, (space_id,))
+                    row = cur.fetchone()
+                    return int(row[0]) if row else 0
+        except Exception as e:
+            if isinstance(e, SpaceIsolationViolation):
+                raise
+            raise MemoryFailure(operation="count_experiences", reason=str(e)) from e
+
+    def prune_experiences(
+        self, space_id: str, policy: RetentionPolicy | None = None
+    ) -> CompactionResult:
+        """Prune experiences in space_id according to retention policy (MEM-RETAIN-001)."""
+        if not space_id or not space_id.strip():
+            raise SpaceIsolationViolation(
+                requesting_space=space_id or "<empty>", target_space=space_id or "<empty>"
+            )
+        pol = policy or self._default_retention_policy or RetentionPolicy()
+        try:
+            with self._get_conn() as conn:
+                with conn.cursor() as cur:
+                    sql = """
+                        SELECT experience_id, space_id, situation, action, outcome,
+                               counterfactual, applicable_context, stored_at,
+                               embedding, embedding_model, embedding_dimension,
+                               embedding_version, failure_fingerprint, provenance_ref
+                        FROM space_experiences
+                        WHERE space_id = %s
+                        ORDER BY stored_at ASC, experience_id ASC;
+                    """
+                    cur.execute(sql, (space_id,))
+                    rows = cur.fetchall()
+                    records = [self._row_to_experience(r) for r in rows]
+                    initial_count = len(records)
+                    if initial_count == 0:
+                        return CompactionResult(
+                            space_id=space_id,
+                            initial_count=0,
+                            final_count=0,
+                            pruned_count=0,
+                            pruned_experience_ids=(),
+                            reasons={},
+                        )
+
+                    victim_ids, reasons = select_compaction_victims(records, pol)
+                    if victim_ids:
+                        cur.execute(
+                            "DELETE FROM space_experiences WHERE space_id = %s AND experience_id = ANY(%s);",
+                            (space_id, list(victim_ids)),
+                        )
+                        conn.commit()
+
+                    final_count = initial_count - len(victim_ids)
+                    return CompactionResult(
+                        space_id=space_id,
+                        initial_count=initial_count,
+                        final_count=final_count,
+                        pruned_count=len(victim_ids),
+                        pruned_experience_ids=tuple(victim_ids),
+                        reasons=reasons,
+                    )
+        except Exception as e:
+            if isinstance(e, SpaceIsolationViolation):
+                raise
+            raise MemoryFailure(operation="prune_experiences", reason=str(e)) from e
 
     def _get_semantic_candidates(
         self, query: SemanticExperienceQuery

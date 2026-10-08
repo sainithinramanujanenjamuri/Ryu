@@ -14,12 +14,14 @@ from datetime import datetime
 from typing import Any
 
 from core.space.memory_protocol import (
+    CompactionResult,
     EmbeddingProviderProtocol,
     EmbeddingResult,
     ExperienceQuery,
     ExperienceRecord,
     KnowledgeEntry,
     PromotionAuthorization,
+    RetentionPolicy,
     ScoredExperienceRecord,
     SemanticExperienceQuery,
     SpaceMemoryProtocol,
@@ -57,6 +59,14 @@ class QdrantAdapterStub(SpaceMemoryProtocol):
         query: SemanticExperienceQuery,
         embedding_provider: EmbeddingProviderProtocol | None = None,
     ) -> list[ScoredExperienceRecord]:
+        raise NotImplementedError("QdrantAdapter: spec §4 (Vector Store) — Phase 11+")
+
+    def count_experiences(self, space_id: str) -> int:
+        raise NotImplementedError("QdrantAdapter: spec §4 (Vector Store) — Phase 11+")
+
+    def prune_experiences(
+        self, space_id: str, policy: RetentionPolicy | None = None
+    ) -> CompactionResult:
         raise NotImplementedError("QdrantAdapter: spec §4 (Vector Store) — Phase 11+")
 
     def store_knowledge(

@@ -13,16 +13,19 @@ from datetime import datetime, timezone
 from typing import Callable
 
 from core.space.memory_protocol import (
+    CompactionResult,
     EmbeddingProviderProtocol,
     EmbeddingResult,
     ExperienceQuery,
     ExperienceRecord,
     KnowledgeEntry,
     PromotionAuthorization,
+    RetentionPolicy,
     ScoredExperienceRecord,
     SemanticExperienceQuery,
     SpaceIsolationViolation,
     SpaceMemoryProtocol,
+    select_compaction_victims,
     verify_promotion_authorization,
 )
 from memory.retrieval.ranker import (
@@ -46,9 +49,13 @@ class InMemoryMemoryAdapter(SpaceMemoryProtocol):
         self,
         signing_key: bytes | None = None,
         key_resolver: Callable[[str], bytes] | None = None,
+        default_retention_policy: RetentionPolicy | None = None,
+        auto_prune: bool = False,
     ) -> None:
         self._signing_key = signing_key
         self._key_resolver = key_resolver
+        self._default_retention_policy = default_retention_policy
+        self._auto_prune = auto_prune
         self._lock = threading.RLock()
         # [space_id][experience_id] -> ExperienceRecord
         self._experiences: dict[str, dict[str, ExperienceRecord]] = {}
@@ -128,7 +135,45 @@ class InMemoryMemoryAdapter(SpaceMemoryProtocol):
                 rec_list.remove(eid)
             rec_list.append(eid)
 
+            if self._auto_prune and self._default_retention_policy:
+                pol = self._default_retention_policy
+                space_records = list(space_map.values())
+                if len(space_records) > pol.max_experiences or pol.ttl_seconds is not None:
+                    victim_ids, _ = select_compaction_victims(space_records, pol)
+                    for vid in victim_ids:
+                        vrec = space_map.pop(vid, None)
+                        if vrec is not None:
+                            self._cleanup_secondary_indexes(sid, vid, vrec)
+
             return effective_record.experience_id
+
+    def _cleanup_secondary_indexes(
+        self, space_id: str, experience_id: str, record: ExperienceRecord
+    ) -> None:
+        """Remove experience from secondary lookup indexes upon eviction."""
+        if record.failure_fingerprint and space_id in self._fingerprint_idx:
+            fp_list = self._fingerprint_idx[space_id].get(record.failure_fingerprint, [])
+            if experience_id in fp_list:
+                fp_list.remove(experience_id)
+
+        cap = record.action.get("capability") or record.situation.get("capability")
+        if cap and space_id in self._capability_idx:
+            cap_str = str(cap).strip().lower()
+            cap_list = self._capability_idx[space_id].get(cap_str, [])
+            if experience_id in cap_list:
+                cap_list.remove(experience_id)
+
+        err = record.applicable_context.get("error_class")
+        if err and space_id in self._error_class_idx:
+            err_str = str(err).strip().lower()
+            err_list = self._error_class_idx[space_id].get(err_str, [])
+            if experience_id in err_list:
+                err_list.remove(experience_id)
+
+        if space_id in self._recency_idx:
+            rec_list = self._recency_idx[space_id]
+            if experience_id in rec_list:
+                rec_list.remove(experience_id)
 
     def get_experience(
         self, space_id: str, experience_id: str
@@ -180,6 +225,54 @@ class InMemoryMemoryAdapter(SpaceMemoryProtocol):
 
         records.sort(key=_sort_key)
         return records[:effective_limit]
+
+    def count_experiences(self, space_id: str) -> int:
+        """Count experiences stored strictly in space_id (MEM-RETAIN-001)."""
+        if not space_id or not space_id.strip():
+            raise SpaceIsolationViolation(
+                requesting_space=space_id or "<empty>", target_space=space_id or "<empty>"
+            )
+        with self._lock:
+            return len(self._experiences.get(space_id, {}))
+
+    def prune_experiences(
+        self, space_id: str, policy: RetentionPolicy | None = None
+    ) -> CompactionResult:
+        """Prune experiences in space_id according to retention policy (MEM-RETAIN-001)."""
+        if not space_id or not space_id.strip():
+            raise SpaceIsolationViolation(
+                requesting_space=space_id or "<empty>", target_space=space_id or "<empty>"
+            )
+        pol = policy or self._default_retention_policy or RetentionPolicy()
+        with self._lock:
+            space_map = self._experiences.get(space_id, {})
+            records = list(space_map.values())
+            initial_count = len(records)
+            if initial_count == 0:
+                return CompactionResult(
+                    space_id=space_id,
+                    initial_count=0,
+                    final_count=0,
+                    pruned_count=0,
+                    pruned_experience_ids=(),
+                    reasons={},
+                )
+
+            victim_ids, reasons = select_compaction_victims(records, pol)
+            for vid in victim_ids:
+                vrec = space_map.pop(vid, None)
+                if vrec is not None:
+                    self._cleanup_secondary_indexes(space_id, vid, vrec)
+
+            final_count = len(space_map)
+            return CompactionResult(
+                space_id=space_id,
+                initial_count=initial_count,
+                final_count=final_count,
+                pruned_count=len(victim_ids),
+                pruned_experience_ids=tuple(victim_ids),
+                reasons=reasons,
+            )
 
     def _get_semantic_candidates(
         self, query: SemanticExperienceQuery

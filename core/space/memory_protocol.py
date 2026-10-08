@@ -369,6 +369,192 @@ class ScoredExperienceRecord:
         return self.record.space_id
 
 
+@dataclass(frozen=True)
+class RetentionPolicy:
+    """Operational lifecycle and retention policy for Space-scoped experience memory (ADR-0050, MEM-RETAIN-001).
+
+    Invariants:
+    - max_experiences: maximum records retained per Space (>= 1, default 1000).
+    - ttl_seconds: optional time-to-live expiration (> 0.0 or None).
+    - preserve_fingerprints: if True, protects experiences with unique failure fingerprints from capacity eviction.
+    - preserve_successful: if True, protects verified successful strategies from premature eviction.
+    """
+
+    max_experiences: int = 1000
+    ttl_seconds: float | None = None
+    preserve_fingerprints: bool = True
+    preserve_successful: bool = True
+
+    def __post_init__(self) -> None:
+        if self.max_experiences < 1:
+            raise ValueError(f"max_experiences must be >= 1, got {self.max_experiences}")
+        if self.ttl_seconds is not None:
+            if not isinstance(self.ttl_seconds, (int, float)):
+                raise TypeError("ttl_seconds must be a float or int")
+            if math.isnan(self.ttl_seconds) or math.isinf(self.ttl_seconds):
+                raise ValueError("ttl_seconds must be a finite number")
+            if self.ttl_seconds <= 0.0:
+                raise ValueError(f"ttl_seconds must be > 0.0, got {self.ttl_seconds}")
+
+
+@dataclass(frozen=True)
+class CompactionResult:
+    """Summary of an experience memory compaction operation (ADR-0050, MEM-RETAIN-001)."""
+
+    space_id: str
+    initial_count: int
+    final_count: int
+    pruned_count: int
+    pruned_experience_ids: tuple[str, ...] = ()
+    reasons: dict[str, int] = field(default_factory=dict)
+
+
+def select_compaction_victims(
+    records: list[ExperienceRecord],
+    policy: RetentionPolicy,
+    now: datetime | None = None,
+) -> tuple[list[str], dict[str, int]]:
+    """Deterministic, evidence-preserving victim selection for memory compaction (ADR-0050, MEM-RETAIN-001).
+
+    Victim selection algorithm:
+    1. Identifies records whose age exceeds policy.ttl_seconds.
+       - Unique failure fingerprints and validated successful strategies are preserved from TTL expiration
+         if policy.preserve_fingerprints / policy.preserve_successful are active.
+    2. Identifies redundant duplicate experiences sharing identical:
+       (capability, failure_fingerprint, outcome, counterfactual).
+       - Keeps the newest record (most recent stored_at), selects older duplicates as victims.
+    3. If remaining records exceed policy.max_experiences, selects excess victims in deterministic
+       priority order:
+       - Tier 0: Un-embedded failures (lowest semantic value).
+       - Tier 1: Redundant / non-unique failure records.
+       - Tier 2: Other records (e.g. non-unique success if preserve_successful=False).
+       - Tier 3: Unique failure fingerprints (if preserve_fingerprints=True, protected until tiers 0-2 exhausted).
+       - Tier 4: Successful strategies (evicted last).
+    4. Deterministic tie-breaking: (stored_at ASC, experience_id ASC).
+
+    Returns:
+    - (list of victim experience_ids, dict of prune reason counts)
+    """
+    if not records:
+        return [], {}
+
+    # Space isolation validation
+    first_space = records[0].space_id
+    for r in records:
+        if r.space_id != first_space:
+            raise SpaceIsolationViolation(requesting_space=first_space, target_space=r.space_id)
+
+    now_dt = now or datetime.now(timezone.utc)
+    if now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=timezone.utc)
+
+    def _get_timestamp(rec: ExperienceRecord) -> datetime:
+        dt = rec.stored_at
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt
+
+    def _is_success(rec: ExperienceRecord) -> bool:
+        return rec.outcome.strip().lower() in ("success", "ok", "completed")
+
+    def _get_fp(rec: ExperienceRecord) -> str | None:
+        fp = rec.failure_fingerprint or rec.applicable_context.get("failure_fingerprint")
+        return str(fp).strip() if fp else None
+
+    # Count fingerprint frequencies
+    fp_counts: dict[str, int] = {}
+    for r in records:
+        fp = _get_fp(r)
+        if fp:
+            fp_counts[fp] = fp_counts.get(fp, 0) + 1
+
+    victim_ids_set: set[str] = set()
+    reasons: dict[str, int] = {}
+
+    def _record_victim(eid: str, reason: str) -> None:
+        if eid not in victim_ids_set:
+            victim_ids_set.add(eid)
+            reasons[reason] = reasons.get(reason, 0) + 1
+
+    # Stage 1: TTL Expiration
+    if policy.ttl_seconds is not None:
+        for r in records:
+            age = (now_dt - _get_timestamp(r)).total_seconds()
+            if age > policy.ttl_seconds:
+                fp = _get_fp(r)
+                is_unique_fp = bool(fp and fp_counts.get(fp, 0) == 1)
+                is_succ = _is_success(r)
+
+                # Preserve unique failure fingerprints or validated successful strategies
+                if policy.preserve_fingerprints and is_unique_fp:
+                    continue
+                if policy.preserve_successful and is_succ:
+                    continue
+
+                _record_victim(r.experience_id, "ttl_expired")
+
+    # Stage 2: Redundant Duplicate Pruning
+    # Group surviving records by (capability, fp, outcome, counterfactual)
+    dup_groups: dict[tuple[str, str, str, str], list[ExperienceRecord]] = {}
+    for r in records:
+        if r.experience_id in victim_ids_set:
+            continue
+        cap = str(r.action.get("capability") or r.situation.get("capability") or "").strip().lower()
+        fp = _get_fp(r) or ""
+        out = r.outcome.strip().lower()
+        cf = r.counterfactual.strip()
+        key = (cap, fp, out, cf)
+        dup_groups.setdefault(key, []).append(r)
+
+    for group in dup_groups.values():
+        if len(group) > 1:
+            # Sort newest first, tie-break lexical ID descending
+            sorted_group = sorted(
+                group,
+                key=lambda x: (_get_timestamp(x), x.experience_id),
+                reverse=True,
+            )
+            # Index 0 is kept; indices 1..N are redundant duplicates
+            for dup_rec in sorted_group[1:]:
+                _record_victim(dup_rec.experience_id, "redundant_duplicate")
+
+    # Stage 3: Capacity Enforcement (max_experiences)
+    surviving = [r for r in records if r.experience_id not in victim_ids_set]
+    if len(surviving) > policy.max_experiences:
+        excess = len(surviving) - policy.max_experiences
+
+        def _eviction_priority(rec: ExperienceRecord) -> tuple[int, datetime, str]:
+            is_succ = _is_success(rec)
+            fp = _get_fp(rec)
+            is_unique_fp = bool(fp and fp_counts.get(fp, 0) == 1)
+            has_emb = rec.embedding is not None
+
+            if not is_succ and not has_emb:
+                tier = 0
+            elif not is_succ and not is_unique_fp:
+                tier = 1
+            elif not is_succ and is_unique_fp:
+                tier = 3 if policy.preserve_fingerprints else 1
+            elif is_succ:
+                tier = 4 if policy.preserve_successful else 2
+            else:
+                tier = 2
+
+            return (tier, _get_timestamp(rec), rec.experience_id)
+
+        sorted_candidates = sorted(surviving, key=_eviction_priority)
+        for cand in sorted_candidates[:excess]:
+            _record_victim(cand.experience_id, "capacity_limit")
+
+    # Deterministic output order: chronological by stored_at, tie-break by experience_id
+    id_to_rec = {r.experience_id: r for r in records}
+    ordered_victims = sorted(
+        list(victim_ids_set),
+        key=lambda eid: (_get_timestamp(id_to_rec[eid]), eid),
+    )
+    return ordered_victims, reasons
+
+
 class SpaceMemoryProtocol(Protocol):
     """Protocol for Space-scoped memory operations (ADR-0033)."""
 
@@ -402,6 +588,16 @@ class SpaceMemoryProtocol(Protocol):
         embedding_provider: EmbeddingProviderProtocol | None = None,
     ) -> list[ScoredExperienceRecord]:
         """Retrieve and deterministically rank experiences using bounded multi-prong semantic retrieval (MEM-SEM-001, MEM-SEM-002)."""
+        ...
+
+    def count_experiences(self, space_id: str) -> int:
+        """Count experiences stored strictly within the specified space (MEM-RETAIN-001)."""
+        ...
+
+    def prune_experiences(
+        self, space_id: str, policy: RetentionPolicy | None = None
+    ) -> CompactionResult:
+        """Prune experiences in space_id according to retention policy (MEM-RETAIN-001)."""
         ...
 
     def store_knowledge(

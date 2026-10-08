@@ -14,12 +14,14 @@ from datetime import datetime
 from typing import Any
 
 from core.space.memory_protocol import (
+    CompactionResult,
     EmbeddingProviderProtocol,
     EmbeddingResult,
     ExperienceQuery,
     ExperienceRecord,
     KnowledgeEntry,
     PromotionAuthorization,
+    RetentionPolicy,
     ScoredExperienceRecord,
     SemanticExperienceQuery,
     SpaceMemoryProtocol,
@@ -57,6 +59,14 @@ class Neo4jAdapterStub(SpaceMemoryProtocol):
         query: SemanticExperienceQuery,
         embedding_provider: EmbeddingProviderProtocol | None = None,
     ) -> list[ScoredExperienceRecord]:
+        raise NotImplementedError("Neo4jAdapter: spec §4 (Knowledge Graph) — Phase 11+")
+
+    def count_experiences(self, space_id: str) -> int:
+        raise NotImplementedError("Neo4jAdapter: spec §4 (Knowledge Graph) — Phase 11+")
+
+    def prune_experiences(
+        self, space_id: str, policy: RetentionPolicy | None = None
+    ) -> CompactionResult:
         raise NotImplementedError("Neo4jAdapter: spec §4 (Knowledge Graph) — Phase 11+")
 
     def store_knowledge(
