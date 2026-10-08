@@ -10,15 +10,19 @@ spec §4 (Space Memory), §15 (Storage Layer), MEM-001..006, ADR-0033..0035 — 
 from __future__ import annotations
 
 import json
+import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any, Callable, Generator
 
 try:
     import psycopg2
     from psycopg2.extras import Json
+    from psycopg2.pool import ThreadedConnectionPool
 except ImportError:  # pragma: no cover
     psycopg2 = None  # type: ignore[assignment]
     Json = None  # type: ignore[assignment, misc]
+    ThreadedConnectionPool = None  # type: ignore[assignment, misc]
 
 from ryu.pulse_bus.config import PostgresConfig
 
@@ -46,7 +50,7 @@ from memory.retrieval.ranker import (
 
 
 class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
-    """Authoritative durable storage adapter backed by PostgreSQL."""
+    """Authoritative durable storage adapter backed by PostgreSQL with connection pooling (MEM-PG-001)."""
 
     def __init__(
         self,
@@ -55,6 +59,9 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
         key_resolver: Callable[[str], bytes] | None = None,
         default_retention_policy: RetentionPolicy | None = None,
         auto_prune: bool = False,
+        min_connections: int = 1,
+        max_connections: int = 10,
+        pool: Any = None,
     ) -> None:
         if psycopg2 is None:
             raise MemoryFailure(
@@ -66,6 +73,12 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
         self._key_resolver = key_resolver
         self._default_retention_policy = default_retention_policy
         self._auto_prune = auto_prune
+        self.min_connections = max(1, min_connections)
+        self.max_connections = max(self.min_connections, min(max_connections, 50))
+        self._external_pool = pool is not None
+        self._pool = pool
+        self._lock = threading.Lock()
+        self._closed = False
 
     def _get_signing_key(self, space_id: str) -> bytes:
         if self._key_resolver is not None:
@@ -76,17 +89,88 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
 
         return hashlib.sha256(f"kernel-signing-key-{space_id}".encode("utf-8")).digest()
 
-    def _get_conn(self) -> Any:
+    def _get_pool(self) -> Any:
+        """Lazily initialize or return the thread-safe connection pool (MEM-PG-001)."""
+        with self._lock:
+            if self._closed:
+                raise MemoryFailure(operation="get_pool", reason="PostgreSQLMemoryAdapter is closed")
+            if self._pool is None:
+                if ThreadedConnectionPool is None:
+                    raise MemoryFailure(
+                        operation="get_pool",
+                        reason="ThreadedConnectionPool is not available. Install psycopg2.",
+                    )
+                try:
+                    self._pool = ThreadedConnectionPool(
+                        minconn=self.min_connections,
+                        maxconn=self.max_connections,
+                        host=self.config.host,
+                        port=self.config.port,
+                        dbname=self.config.db,
+                        user=self.config.user,
+                        password=self.config.password,
+                    )
+                except Exception as e:
+                    raise MemoryFailure(operation="connect_pool", reason=str(e)) from e
+            return self._pool
+
+    @contextmanager
+    def connection(self) -> Generator[Any, None, None]:
+        """Acquire a connection from the pool, yield it, and guarantee return to pool (MEM-PG-001)."""
+        if self._closed:
+            raise MemoryFailure(operation="connection", reason="PostgreSQLMemoryAdapter is closed")
+        pool = self._get_pool()
+        conn = None
         try:
-            return psycopg2.connect(
-                host=self.config.host,
-                port=self.config.port,
-                dbname=self.config.db,
-                user=self.config.user,
-                password=self.config.password,
-            )
+            conn = pool.getconn()
         except Exception as e:
-            raise MemoryFailure(operation="connect", reason=str(e)) from e
+            raise MemoryFailure(operation="acquire_connection", reason=str(e)) from e
+        try:
+            yield conn
+        finally:
+            if conn is not None:
+                try:
+                    pool.putconn(conn)
+                except Exception:
+                    pass
+
+    # _get_conn is aliased to connection for transparent pool acquisition and test mockability
+    _get_conn = connection
+
+    def close(self) -> None:
+        """Close connection pool and release resources (MEM-PG-001)."""
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            if self._pool is not None and not self._external_pool:
+                try:
+                    self._pool.closeall()
+                except Exception:
+                    pass
+                self._pool = None
+
+    def __enter__(self) -> PostgreSQLMemoryAdapter:
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
+
+    def get_pool_status(self) -> dict[str, Any]:
+        """Observability status of the connection pool (MEM-PG-001)."""
+        return {
+            "min_connections": self.min_connections,
+            "max_connections": self.max_connections,
+            "closed": self._closed,
+            "external_pool": self._external_pool,
+            "pool_initialized": self._pool is not None,
+        }
 
     def store_experience(
         self, record: ExperienceRecord, embedding: EmbeddingResult | None = None
@@ -585,6 +669,8 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
 
     def _row_to_experience(self, row: tuple) -> ExperienceRecord:  # type: ignore[type-arg]
         stored_at = row[7]
+        if isinstance(stored_at, str):
+            stored_at = datetime.fromisoformat(stored_at)
         if stored_at and stored_at.tzinfo is None:
             stored_at = stored_at.replace(tzinfo=timezone.utc)
 
@@ -637,6 +723,8 @@ class PostgreSQLMemoryAdapter(SpaceMemoryProtocol):
 
     def _row_to_knowledge(self, row: tuple) -> KnowledgeEntry:  # type: ignore[type-arg]
         promoted_at = row[6]
+        if isinstance(promoted_at, str):
+            promoted_at = datetime.fromisoformat(promoted_at)
         if promoted_at and promoted_at.tzinfo is None:
             promoted_at = promoted_at.replace(tzinfo=timezone.utc)
         return KnowledgeEntry(
