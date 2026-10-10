@@ -14,19 +14,14 @@ Authority and Architecture:
 
 from __future__ import annotations
 
-import collections
 import concurrent.futures
 import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from ryu.pulse_bus.pulse import Pulse, Severity
-
-from core.capabilities.admission import CapabilityRequest, CapabilityResponse
 from core.orchestrator.dispatch_model import (
     CrossSpaceViolationError,
     DeterministicDispatcher,
@@ -39,7 +34,7 @@ from core.orchestrator.execution_state import (
     ExecutionAttemptRecord,
     ExecutionAttemptStore,
 )
-from core.plans.task_graph import TaskGraph, TaskNode, TaskState
+from core.plans.task_graph import TaskGraph, TaskState
 from core.resources.identity import ResourceIdentity
 from core.resources.manager import ResourceManager
 
@@ -463,31 +458,8 @@ class ConcurrentDAGScheduler:
         with self._lock:
             self._active_futures[future] = (cand.space_id, cand.task_id)
 
-        # Publish task dispatch pulse if bus available
-        if self.bus is not None:
-            try:
-                self.bus.publish(
-                    Pulse(
-                        id=f"pulse-sched-dispatch-{cand.space_id}-{cand.task_id}-{int(time.time()*1000)}",
-                        space_id=cand.space_id,
-                        type="task.dispatched",
-                        severity=Severity.INFO,
-                        source="scheduler",
-                        timestamp=datetime.now(timezone.utc),
-                        payload={
-                            "task_id": cand.task_id,
-                            "plan_version": cand.plan_version,
-                            "priority": cand.priority,
-                            "topological_depth": cand.topological_depth,
-                        },
-                        taint=False,
-                        correlation_id=f"corr-{cand.space_id}-{cand.task_id}",
-                    )
-                )
-            except Exception:
-                pass
-
         return True
+
 
     def _execute_task_pipeline_wrapper(
         self,

@@ -43,7 +43,7 @@ Architectural Decision Record `adr/0049-semantic-memory-and-experience-retrieval
   5. Mandate graceful degradation: failure of the embedding provider or vector store falls back to exact/metadata matching or emits no hint without interrupting execution or escalating authority.
   6. Classify experience retrieval results as strictly advisory (`ExperienceHint`), forbidding direct mutation of plans, task graphs, leases, or budgets.
   7. Preserve the frozen pulse registry invariant: zero new pulse types introduced.
-- **Consequences:** Clean separation of concerns, guaranteed Core Boundary independence, verifiable determinism and resource boundedness, zero risk of runaway candidate scans.
+- **Consequences:** Clean separation of concerns, guaranteed Core Boundary independence, verifiable determinism and resource boundedness, architecturally bounded candidate generation ($C_{max} \le 50$) preventing unconstrained candidate scans.
 
 ---
 
